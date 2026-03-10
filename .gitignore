@@ -17,6 +17,9 @@ instance/
 # Uploaded files
 uploaded.xlsx
 
+# Saved analyses (server-side user data)
+saves/
+
 # Misc
 .DS_Store
 Thumbs.db
