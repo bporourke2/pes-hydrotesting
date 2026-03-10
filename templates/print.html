@@ -44,7 +44,10 @@
     <div class="first-page">
         <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
         <h1>Hydrotest Analysis Results</h1>
-        
+        {% if p.get('analysis_name') %}
+        <h2 style="text-align:center; margin-top:-10px;">{{ p.analysis_name }}</h2>
+        {% endif %}
+
         <h2>Engineering Controls</h2>
         <ul class="controls-grid">
             <li>Start Station: {{ p.start|station_format }}</li>
@@ -72,6 +75,10 @@
             <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
             <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
             <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft</p></div>
+            <div class="card" style="{% if max_smys_pct > p.smys_threshold %}border-top: 3px solid #e74c3c;{% endif %}">
+                <h4>Max % SMYS{% if max_smys_pct > p.smys_threshold %} — EXCEEDS LIMIT{% endif %}</h4>
+                <p style="{% if max_smys_pct > p.smys_threshold %}color: #e74c3c;{% endif %}">{{ max_smys_pct|round(1) }}% at {{ max_smys_station|station_format }}</p>
+            </div>
             {% if fill_time %}
             <div class="card"><h4>Time to Fill</h4><p>{{ fill_time }} (HH:MM)</p></div>
             {% endif %}

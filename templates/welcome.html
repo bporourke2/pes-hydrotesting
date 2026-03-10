@@ -1,10 +1,206 @@
-<div style="text-align:center; padding-top:100px; font-family:Arial;">
-    <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hydrotest Planning Tool</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+        .logo { max-width: 200px; margin-bottom: 30px; }
+        h1 { color: #2c3e50; margin-bottom: 8px; }
+        .subtitle { color: #7f8c8d; margin-bottom: 50px; }
+        .options { display: flex; gap: 30px; width: 100%; max-width: 900px; margin-bottom: 50px; }
+        .option-card { flex: 1; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; }
+        .option-card h2 { color: #2c3e50; margin-bottom: 10px; font-size: 1.2em; }
+        .option-card p { color: #7f8c8d; font-size: 0.9em; margin-bottom: 20px; }
+        .btn { display: inline-block; padding: 10px 20px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.95em; text-decoration: none; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-dark { background: #2c3e50; color: white; }
+        .btn-blue { background: #2980b9; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .btn:hover { opacity: 0.9; }
+        .btn-sm { padding: 5px 12px; font-size: 0.8em; border-radius: 3px; }
+        .saves-section { width: 100%; max-width: 900px; }
+
+        /* Portfolio block */
+        .portfolio-block { margin-bottom: 30px; }
+        .portfolio-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        .portfolio-header h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
+        .portfolio-tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; font-weight: 600; color: white; }
+
+        /* Saves table */
+        .saves-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .saves-table th { background: #f8f9fa; padding: 10px 14px; text-align: left; font-size: 0.8em; text-transform: uppercase; color: #7f8c8d; border-bottom: 2px solid #dee2e6; }
+        .saves-table td { padding: 12px 14px; border-bottom: 1px solid #eee; font-size: 0.9em; vertical-align: middle; }
+        .saves-table tr:last-child td { border-bottom: none; }
+        .saves-table .notes { color: #7f8c8d; font-size: 0.85em; }
+        .saves-table .stations { font-family: monospace; font-size: 0.85em; color: #555; }
+        .action-btns { display: flex; gap: 8px; }
+        .no-saves { color: #7f8c8d; font-style: italic; padding: 16px 14px; background: white; border-radius: 8px; font-size: 0.9em; }
+
+        /* Manage portfolios */
+        .manage-section { width: 100%; max-width: 900px; margin-bottom: 40px; }
+        .manage-section h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .portfolio-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; }
+        .portfolio-chip { display: flex; align-items: center; gap: 8px; background: white; border-radius: 20px; padding: 6px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); font-size: 0.9em; }
+        .portfolio-chip .chip-color { width: 10px; height: 10px; border-radius: 50%; }
+        .portfolio-chip form { margin: 0; }
+        .chip-delete { background: none; border: none; color: #bdc3c7; cursor: pointer; font-size: 1em; line-height: 1; padding: 0 2px; }
+        .chip-delete:hover { color: #e74c3c; }
+        .new-portfolio-form { display: flex; gap: 8px; align-items: center; }
+        .new-portfolio-form input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; width: 220px; }
+    </style>
+</head>
+<body>
+    <img src="/static/peslogo.png" alt="PES Logo" class="logo">
     <h1>Hydrotest Planning Tool</h1>
-    <p>Select an option to begin calculations</p>
-    <form action="/mapping" method="POST" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".xlsx" required>
-        <button type="submit" style="padding:10px 20px;">Upload New Data</button>
-    </form>
-    <a href="/set_mode/demo"><button style="padding:10px 20px; background:#28a745; color:white;">Use Testdata.xlsx Demo</button></a>
-</div>
+    <p class="subtitle">Pipeline hydrotest engineering analysis</p>
+
+    <div class="options">
+        <div class="option-card">
+            <h2>Start New Analysis</h2>
+            <p>Upload an Excel file with pipeline survey data, or use the built-in demo dataset.</p>
+            <form action="/mapping" method="POST" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+                <input type="file" name="file" accept=".xlsx" required style="font-size:0.85em;">
+                <button type="submit" class="btn btn-green">Upload & Begin</button>
+            </form>
+            <a href="/set_mode/demo" class="btn btn-dark">Use Demo Data</a>
+        </div>
+
+        <div class="option-card" style="border-top-color: #2c3e50;">
+            <h2>Open Saved Analysis</h2>
+            <p>Load a previously saved analysis with all engineering controls and settings restored.</p>
+            {% set total = saves|length %}
+            {% if total > 0 %}
+            <p style="color:#27ae60; font-size:0.85em;">{{ total }} saved analysis{{ 'es' if total != 1 else '' }} across {{ portfolios|length }} portfolio{{ 's' if portfolios|length != 1 else '' }}</p>
+            {% else %}
+            <p style="color:#bdc3c7; font-size:0.85em;">No saved analyses yet</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Portfolio Management -->
+    <div class="manage-section">
+        <h2>Portfolios</h2>
+        <div class="portfolio-list">
+            {% for pf in portfolios %}
+            <div class="portfolio-chip">
+                <span>{{ pf.name }}</span>
+                <form method="POST" action="/portfolio/delete/{{ pf.id }}" onsubmit="return confirm('Delete portfolio \'{{ pf.name }}\'? Analyses will become uncategorized.')">
+                    <button type="submit" class="chip-delete" title="Delete portfolio">&#x2715;</button>
+                </form>
+            </div>
+            {% endfor %}
+            {% if not portfolios %}
+            <span style="color:#bdc3c7; font-size:0.85em; font-style:italic;">No portfolios yet</span>
+            {% endif %}
+        </div>
+        <form method="POST" action="/portfolio/create" class="new-portfolio-form">
+            <input type="text" name="name" placeholder="New portfolio name..." required>
+            <button type="submit" class="btn btn-blue btn-sm">+ Add Portfolio</button>
+        </form>
+    </div>
+
+    <!-- Saves grouped by portfolio -->
+    <div class="saves-section">
+        {% if saves %}
+
+        {# Build portfolio lookup #}
+        {% set pf_map = {} %}
+        {% for pf in portfolios %}
+            {% if pf_map.update({pf.id: pf.name}) %}{% endif %}
+        {% endfor %}
+
+        {# Group saves by portfolio #}
+        {% for pf in portfolios %}
+            {% set group = saves | selectattr('portfolio_id', 'equalto', pf.id) | list %}
+            {% if group %}
+            <div class="portfolio-block">
+                <div class="portfolio-header">
+                    <h2>{{ pf.name }}</h2>
+                    <span style="color:#7f8c8d; font-size:0.85em;">{{ group|length }} analysis{{ 'es' if group|length != 1 else '' }}</span>
+                </div>
+                <table class="saves-table">
+                    <thead><tr>
+                        <th>Name</th><th>Saved</th><th>Section</th><th>Notes</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                    {% for s in group %}
+                    <tr>
+                        <td><strong>{{ s.name }}</strong></td>
+                        <td>{{ s.timestamp }}</td>
+                        <td class="stations">
+                            {% if s.params.start and s.params.end %}
+                            {{ s.params.start|station_format }} – {{ s.params.end|station_format }}
+                            {% endif %}
+                        </td>
+                        <td class="notes">{{ s.notes or '—' }}</td>
+                        <td>
+                            <div class="action-btns">
+                                <a href="/load/{{ s.id }}" class="btn btn-green btn-sm">Open</a>
+                                <form method="POST" action="/delete/{{ s.id }}" onsubmit="return confirm('Delete this analysis?')">
+                                    <button type="submit" class="btn btn-red btn-sm">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        {% endfor %}
+
+        {# Uncategorized #}
+        {% set ungrouped = saves | selectattr('portfolio_id', 'none') | list %}
+        {% set ungrouped = ungrouped + (saves | rejectattr('portfolio_id', 'defined') | list) %}
+        {# Simpler: filter saves where portfolio_id is falsy #}
+        {% set ungrouped = [] %}
+        {% for s in saves %}
+            {% if not s.get('portfolio_id') %}
+                {% if ungrouped.append(s) %}{% endif %}
+            {% endif %}
+        {% endfor %}
+
+        {% if ungrouped %}
+        <div class="portfolio-block">
+            <div class="portfolio-header">
+                <h2>Uncategorized</h2>
+                <span style="color:#7f8c8d; font-size:0.85em;">{{ ungrouped|length }} analysis{{ 'es' if ungrouped|length != 1 else '' }}</span>
+            </div>
+            <table class="saves-table">
+                <thead><tr>
+                    <th>Name</th><th>Saved</th><th>Section</th><th>Notes</th><th></th>
+                </tr></thead>
+                <tbody>
+                {% for s in ungrouped %}
+                <tr>
+                    <td><strong>{{ s.name }}</strong></td>
+                    <td>{{ s.timestamp }}</td>
+                    <td class="stations">
+                        {% if s.params.start and s.params.end %}
+                        {{ s.params.start|station_format }} – {{ s.params.end|station_format }}
+                        {% endif %}
+                    </td>
+                    <td class="notes">{{ s.notes or '—' }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <a href="/load/{{ s.id }}" class="btn btn-green btn-sm">Open</a>
+                            <form method="POST" action="/delete/{{ s.id }}" onsubmit="return confirm('Delete this analysis?')">
+                                <button type="submit" class="btn btn-red btn-sm">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="no-saves">No saved analyses yet. Run an analysis and use the Document tab to save it.</div>
+        {% endif %}
+    </div>
+</body>
+</html>

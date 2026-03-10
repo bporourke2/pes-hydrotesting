@@ -12,14 +12,18 @@ def parse_station(st):
     st = str(st).replace(',', '')  # Handle commas
     if '+' in st:
         parts = st.split('+')
-        return float(parts[0]) * 100 + float(parts[1])
+        sign = -1 if float(parts[0]) < 0 else 1
+        return float(parts[0]) * 100 + sign * float(parts[1])
     else:
         return float(st)
 
 def station_format(x):
+    x = float(x)
+    sign = '-' if x < 0 else ''
+    x = abs(x)
     sta = int(x // 100)
     rem = int(x % 100)
-    return f"{sta}+{rem:02d}"
+    return f"{sign}{sta}+{rem:02d}"
 
 class PipelineApp:
     def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04, head_factor=0.433):
@@ -87,19 +91,54 @@ class PipelineApp:
             ticktext = [f"{int(val // 100)}+{int(val % 100):02d}" for val in tickvals]
             fig.update_xaxes(tickvals=tickvals, ticktext=ticktext)
 
-            fill_site = parse_station(params.get('fill_site'))
-            test_site = parse_station(params.get('test_site'))
-            if not df.empty:
-                closest_fill = df.iloc[(df['Station'] - fill_site).abs().argsort()[:1]]
-                closest_test = df.iloc[(df['Station'] - test_site).abs().argsort()[:1]]
-                if not closest_fill.empty:
-                    fill_sta = closest_fill['Station'].values[0]
-                    fill_elev = closest_fill['Elevation'].values[0]
-                    fig.add_vline(x=fill_sta, line=dict(color='green', dash='dash'), annotation_text=f'Fill Site (Elev {fill_elev:.1f} ft)', annotation_position='top left')
-                if not closest_test.empty:
-                    test_sta = closest_test['Station'].values[0]
-                    test_elev = closest_test['Elevation'].values[0]
-                    fig.add_vline(x=test_sta, line=dict(color='blue', dash='dash'), annotation_text=f'Test Site (Elev {test_elev:.1f} ft)', annotation_position='top left')
+            # Build marker list: fill site, test site, high point, low point
+            markers = []
+            if params and not df.empty:
+                for site_key, label, color in [('fill_site', 'Fill Site', 'green'), ('test_site', 'Test Site', 'blue')]:
+                    val = params.get(site_key)
+                    if val is not None:
+                        row = df.iloc[(df['Station'] - parse_station(val)).abs().argsort()[:1]]
+                        if not row.empty:
+                            markers.append((row['Station'].values[0], row['Elevation'].values[0], label, color))
+                high_row = df.loc[df['Elevation'].idxmax()]
+                low_row = df.loc[df['Elevation'].idxmin()]
+                markers.append((high_row['Station'], high_row['Elevation'], 'High Point', '#9b59b6'))
+                markers.append((low_row['Station'], low_row['Elevation'], 'Low Point', '#e67e22'))
+
+            def add_plotly_markers(fig, markers):
+                if not markers:
+                    return
+                sta_range = max(df['Station'].max() - df['Station'].min(), 1)
+                sta_min = df['Station'].min()
+                tol = sta_range * 0.005
+                y_levels = [0.97, 0.88, 0.79, 0.70]
+                groups = []
+                for i in range(len(markers)):
+                    placed = False
+                    for g in groups:
+                        if abs(markers[g[0]][0] - markers[i][0]) < tol:
+                            g.append(i)
+                            placed = True
+                            break
+                    if not placed:
+                        groups.append([i])
+                for g in groups:
+                    for rank, idx in enumerate(g):
+                        x, elev, label, color, *extra = markers[idx]
+                        sublabel = extra[0] if extra else f'{station_format(x)}, {elev:.1f} ft'
+                        y_pos = y_levels[min(rank, len(y_levels) - 1)]
+                        xanchor = 'right' if x > sta_min + sta_range * 0.75 else 'left'
+                        fig.add_vline(x=x, line=dict(color=color, dash='dash', width=1))
+                        fig.add_annotation(
+                            x=x, y=y_pos, xref='x', yref='paper',
+                            text=f'{label}<br>({sublabel})',
+                            showarrow=False, xanchor=xanchor,
+                            font=dict(color=color, size=10),
+                            bgcolor='rgba(255,255,255,0.8)',
+                            bordercolor=color, borderwidth=1, borderpad=3
+                        )
+
+            add_plotly_markers(fig, markers)
 
             plot1 = fig.to_html(full_html=False, include_plotlyjs=True)
 
@@ -129,19 +168,87 @@ class PipelineApp:
 
             fig2.update_xaxes(tickvals=tickvals, ticktext=ticktext)
 
-            if not df.empty:
-                if not closest_fill.empty:
-                    fig2.add_vline(x=fill_sta, line=dict(color='green', dash='dash'), annotation_text=f'Fill Site (Elev {fill_elev:.1f} ft)', annotation_position='top left')
-                if not closest_test.empty:
-                    fig2.add_vline(x=test_sta, line=dict(color='blue', dash='dash'), annotation_text=f'Test Site (Elev {test_elev:.1f} ft)', annotation_position='top left')
+            # Build fig2-specific extra markers: prepack start and vent threshold station
+            fig2_extra = []
+            if sec is not None and params and not df.empty:
+                fill_val = params.get('fill_site')
+                if fill_val is not None:
+                    fill_row = df.iloc[(df['Station'] - parse_station(fill_val)).abs().argsort()[:1]]
+                    if not fill_row.empty:
+                        fig2_extra.append((fill_row['Station'].values[0], fill_row['Elevation'].values[0], f'Pre-pack ({sec.prepack_psi:.0f} psig)', '#EAAA00'))
+                if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None and 'Cum_Gal' in df.columns:
+                    vent_row = df.iloc[(df['Cum_Gal'] - sec.cum_gal_at_vent).abs().argsort()[:1]]
+                    if not vent_row.empty:
+                        fig2_extra.append((vent_row['Station'].values[0], vent_row['Elevation'].values[0], f'Vent Threshold ({sec.vent_psi:.0f} psig)', 'red', f'{sec.cum_gal_at_vent:,.0f} gal into filling'))
+
+            add_plotly_markers(fig2, markers + fig2_extra)
 
             plot2 = fig2.to_html(full_html=False, include_plotlyjs=True)
 
             return plot1, plot2
 
         else:
+            # Build markers for static plots (same logic as interactive)
+            markers = []
+            if params and not df.empty:
+                for site_key, label, color in [('fill_site', 'Fill Site', 'green'), ('test_site', 'Test Site', 'blue')]:
+                    val = params.get(site_key)
+                    if val is not None:
+                        row = df.iloc[(df['Station'] - parse_station(val)).abs().argsort()[:1]]
+                        if not row.empty:
+                            markers.append((row['Station'].values[0], row['Elevation'].values[0], label, color))
+                high_row = df.loc[df['Elevation'].idxmax()]
+                low_row = df.loc[df['Elevation'].idxmin()]
+                markers.append((high_row['Station'], high_row['Elevation'], 'High Point', '#9b59b6'))
+                markers.append((low_row['Station'], low_row['Elevation'], 'Low Point', '#e67e22'))
+
+            def add_mpl_markers(ax, mkrs=None):
+                if mkrs is None:
+                    mkrs = markers
+                if not mkrs or df.empty:
+                    return
+                sta_range = max(df['Station'].max() - df['Station'].min(), 1)
+                sta_min = df['Station'].min()
+                tol = sta_range * 0.005
+                # Place labels above the plot (y > 1.0 in axes coordinates)
+                y_levels = [1.03, 1.13, 1.23, 1.33]
+                groups = []
+                for i in range(len(mkrs)):
+                    placed = False
+                    for g in groups:
+                        if abs(mkrs[g[0]][0] - mkrs[i][0]) < tol:
+                            g.append(i)
+                            placed = True
+                            break
+                    if not placed:
+                        groups.append([i])
+                trans = ax.get_xaxis_transform()
+                for g in groups:
+                    for rank, idx in enumerate(g):
+                        x, elev, label, color, *extra = mkrs[idx]
+                        sublabel = extra[0] if extra else f'{station_format(x)}, {elev:.1f} ft'
+                        y_pos = y_levels[min(rank, len(y_levels) - 1)]
+                        ha = 'right' if x > sta_min + sta_range * 0.75 else 'left'
+                        ax.axvline(x=x, color=color, linestyle='--', linewidth=1)
+                        ax.text(x, y_pos, f'{label}\n({sublabel})',
+                                transform=trans, color=color, fontsize=7,
+                                verticalalignment='bottom', horizontalalignment=ha,
+                                clip_on=False,
+                                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.9, edgecolor=color, linewidth=0.5))
+
+            # Helper to apply station-format x-axis ticks
+            def apply_station_xticks(ax):
+                sta_min = df['Station'].min()
+                sta_max = df['Station'].max()
+                step = 1000
+                tickvals = list(range(int(sta_min // step) * step, int(sta_max) + step, step))
+                tickvals = [t for t in tickvals if sta_min <= t <= sta_max]
+                ax.set_xticks(tickvals)
+                ax.set_xticklabels([station_format(t) for t in tickvals], rotation=45, ha='right', fontsize=8)
+
             # Static plots using matplotlib for print
-            fig1, ax1 = plt.subplots(figsize=(10, 6))
+            fig1, ax1 = plt.subplots(figsize=(12, 7))
+            fig1.subplots_adjust(bottom=0.22, top=0.68)
             ax2 = ax1.twinx()
 
             ax1.plot(df['Station'], df['Elevation'], label='Elevation (ft)', color='#101820')
@@ -153,7 +260,6 @@ class PipelineApp:
             if 'Upper_Bound_P' in df.columns:
                 ax2.plot(df['Station'], df['Upper_Bound_P'], label='Test Window Maximum', color='orange', linestyle='--')
 
-            # Red shading for test window exceeding SMYS in matplotlib
             exceed_mask = df['Upper_Bound_P'] > df['SMYS_Limit']
             if exceed_mask.any():
                 ax2.fill_between(df['Station'][exceed_mask], df['SMYS_Limit'][exceed_mask], df['Upper_Bound_P'][exceed_mask], color='red', alpha=0.3, label='Test Window Exceeds SMYS')
@@ -161,40 +267,61 @@ class PipelineApp:
             if min_test is not None:
                 ax2.axhline(y=min_test, color='red', linestyle='--', label='Min Test Pressure')
 
-            ax1.set_xlabel('Station')
+            add_mpl_markers(ax1)
+            apply_station_xticks(ax1)
+
+            ax1.set_xlabel('Station', labelpad=40)
             ax1.set_ylabel('Elevation (ft)')
             ax2.set_ylabel('Pressure (psig)')
             ax1.set_title('Pressure Profile')
 
             lines, labels = ax1.get_legend_handles_labels()
             lines2, labels2 = ax2.get_legend_handles_labels()
-            ax2.legend(lines + lines2, labels + labels2, loc='upper left')
+            ax1.legend(lines + lines2, labels + labels2, loc='upper center',
+                       bbox_to_anchor=(0.5, -0.35), ncol=3, fontsize=8, framealpha=0.9)
 
             buf1 = io.BytesIO()
-            fig1.savefig(buf1, format='png', bbox_inches='tight')
+            fig1.savefig(buf1, format='png', bbox_inches='tight', dpi=150)
             buf1.seek(0)
             plot1_static = base64.b64encode(buf1.getvalue()).decode('utf-8')
             plt.close(fig1)
 
             # Second static plot
-            fig2, ax1 = plt.subplots(figsize=(10, 6))
+            fig2, ax1 = plt.subplots(figsize=(12, 7))
+            fig2.subplots_adjust(bottom=0.22, top=0.68)
             ax2 = ax1.twinx()
 
             ax1.plot(df['Station'], df['Elevation'], label='Elevation (ft)', color='#101820')
-            ax2.plot(df['Station'], df['Prepack_Profile'], label='Prepack Profile (psig)', color='blue')
+            ax2.plot(df['Station'], df['Prepack_Profile'], label='Prepack Profile (psig)', color='#EAAA00')
             ax2.plot(df['Station'], df['Req_Back_P'], label='Required Backpressure (psig)', color='purple', linestyle='--')
 
-            ax1.set_xlabel('Station')
+            fig2_extra = []
+            if sec is not None and params and not df.empty:
+                fill_val = params.get('fill_site')
+                if fill_val is not None:
+                    fill_row = df.iloc[(df['Station'] - parse_station(fill_val)).abs().argsort()[:1]]
+                    if not fill_row.empty:
+                        fig2_extra.append((fill_row['Station'].values[0], fill_row['Elevation'].values[0], f'Pre-pack ({sec.prepack_psi:.0f} psig)', '#EAAA00'))
+                if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None and 'Cum_Gal' in df.columns:
+                    vent_row = df.iloc[(df['Cum_Gal'] - sec.cum_gal_at_vent).abs().argsort()[:1]]
+                    if not vent_row.empty:
+                        fig2_extra.append((vent_row['Station'].values[0], vent_row['Elevation'].values[0], f'Vent Threshold ({sec.vent_psi:.0f} psig)', 'red', f'{sec.cum_gal_at_vent:,.0f} gal into filling'))
+
+            add_mpl_markers(ax1, markers + fig2_extra)
+            apply_station_xticks(ax1)
+
+            ax1.set_xlabel('Station', labelpad=40)
             ax1.set_ylabel('Elevation (ft)')
             ax2.set_ylabel('Pressure (psig)')
             ax1.set_title('Filling Profile')
 
             lines, labels = ax1.get_legend_handles_labels()
             lines2, labels2 = ax2.get_legend_handles_labels()
-            ax2.legend(lines + lines2, labels + labels2, loc='upper left')
+            ax1.legend(lines + lines2, labels + labels2, loc='upper center',
+                       bbox_to_anchor=(0.5, -0.35), ncol=3, fontsize=8, framealpha=0.9)
 
             buf2 = io.BytesIO()
-            fig2.savefig(buf2, format='png', bbox_inches='tight')
+            fig2.savefig(buf2, format='png', bbox_inches='tight', dpi=150)
             buf2.seek(0)
             plot2_static = base64.b64encode(buf2.getvalue()).decode('utf-8')
             plt.close(fig2)
@@ -244,10 +371,11 @@ class Section:
         # Calculate required gauge pressure at test site to satisfy min_p at high point
         max_head_loss = (test_elev - high_elev) * app.head_factor
         
-        # Adjust for target
-        self.target_gauge = target_gauge_at_test_site - max_head_loss
-        self.gauge_lower = self.target_gauge - (window_upper / 2)
-        self.gauge_upper = self.target_gauge + (window_upper / 2)
+        # Round lower bound down to nearest 5, then build window off that
+        raw_target = target_gauge_at_test_site - max_head_loss
+        self.gauge_lower = math.floor((raw_target - window_upper / 2) / 5) * 5
+        self.gauge_upper = self.gauge_lower + window_upper
+        self.target_gauge = self.gauge_lower + window_upper / 2
         
         self.points['Local_P'] = self.target_gauge + (test_elev - self.points['Elevation']) * app.head_factor
         self.points['Lower_Bound_P'] = self.gauge_lower + (test_elev - self.points['Elevation']) * app.head_factor
@@ -336,11 +464,3 @@ class Section:
         self.points['Percent_SMYS'] = (self.points['Local_P'] / (2 * app.smys * self.points['WT'] / app.od)) * 100
         self.table_data = self.points
 
-    def calc_volume(self, od):
-        vol_ft3 = 0
-        df = self.points.sort_values('Station').reset_index()
-        for i in range(len(df) - 1):
-            dist = abs(df.loc[i+1, 'Station'] - df.loc[i, 'Station'])
-            id_in = od - (2 * df.loc[i, 'WT'])
-            vol_ft3 += (math.pi * (id_in / 24)**2) * dist
-        return vol_ft3 * 7.4805
