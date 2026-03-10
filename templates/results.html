@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hydrotest Engineering Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #f4f7f6; }
+        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); color: var(--text-light); padding: 25px; height: 100vh; position: fixed; overflow-y: scroll; box-sizing: border-box; }
+        .sidebar input { width: 100%; padding: 8px; margin: 8px 0; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; }
+        .content { margin-left: calc(var(--sidebar-width) + 20px); padding: 40px; width: 100%; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 4px solid var(--accent-green); }
+        .card h4 { margin: 0; color: #7f8c8d; font-size: 0.75em; text-transform: uppercase; }
+        .card p { margin: 8px 0 0; font-size: 1.2em; font-weight: bold; }
+        .plot-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+        .plot-box hr { border: 1px solid #ddd; }  /* Style for separator between plots */
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        th { background: #f8f9fa; padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6; }
+        td { padding: 10px; text-align: right; border-bottom: 1px solid #eee; }
+        .warning { color: #e74c3c; font-weight: bold; }
+        .mapping-grid { display: grid; grid-template-columns: 1fr; gap: 15px; margin: 20px 0; }  # Single column
+        .sidebar-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        label { display: block; font-size: 0.9em; margin-bottom: 4px; }
+    </style>
+    <script>
+        function formatStation(input) {
+            let val = parseFloat(input.value.replace(/[+]/g, ''));
+            if (!isNaN(val)) {
+                let sta = Math.floor(val / 100);
+                let rem = Math.round(val % 100);
+                input.value = sta + '+' + (rem < 10 ? '0' + rem : rem);
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="sidebar">
+        <h3>Engineering Controls</h3>
+        <form method="POST">
+            <div class="sidebar-grid">
+                <label>Start Station</label><input name="start" value="{{ p.start|station_format }}" onblur="formatStation(this)">
+                <label>End Station</label><input name="end" value="{{ p.end|station_format }}" onblur="formatStation(this)">
+                <label>Fill GPM</label><input type="number" name="fill_gpm" value="{{ p.fill_gpm }}">
+                <label>Dewater GPM</label><input type="number" name="dewater_gpm" value="{{ p.dewater_gpm }}">
+                <label>Pre-pack CFM</label><input type="number" name="cfm" value="{{ p.cfm }}">
+                <label>OD (inches)</label><input type="number" name="od" value="{{ p.od }}">
+                <label>Min Test Pressure (psig)</label><input type="number" name="min_p" value="{{ p.min_p }}">
+                <label>Test Site Station</label><input name="test_site" value="{{ p.test_site|station_format }}" onblur="formatStation(this)">
+                <label>Dewater Site Station</label><input name="dewater_site" value="{{ p.dewater_site|station_format }}" onblur="formatStation(this)">
+                <label>Test Window Lower Buffer</label><input type="number" name="min_excess" value="{{ p.min_excess or 25 }}">
+                <label>Test Window Size</label><input type="number" name="window_upper" value="{{ p.window_upper or 50 }}">
+                <label>Override Pre-pack psig</label><input type="number" name="override_prepack" value="{{ p.override_prepack or '' }}" placeholder="None">
+                <label>Override Vent Threshold psig</label><input type="number" name="override_vent" value="{{ p.override_vent or '' }}" placeholder="None">
+                <label>Pipe Grade</label><select name="grade">
+                    <option value="B" {% if p.grade == 'B' %}selected{% endif %}>B (SMYS 35000)</option>
+                    <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42000)</option>
+                    <option value="X52" {% if p.grade == 'X52' %}selected{% endif %}>X52 (SMYS 52000)</option>
+                    <option value="X60" {% if p.grade == 'X60' %}selected{% endif %}>X60 (SMYS 60000)</option>
+                    <option value="X65" {% if p.grade == 'X65' %}selected{% endif %}>X65 (SMYS 65000)</option>
+                    <option value="X70" {% if p.grade == 'X70' %}selected{% endif %}>X70 (SMYS 70000)</option>
+                    <option value="X80" {% if p.grade == 'X80' %}selected{% endif %}>X80 (SMYS 80000)</option>
+                </select>
+                <label>SMYS Threshold (%)</label><input type="number" step="1" name="smys_threshold" value="{{ p.smys_threshold|int or 104 }}">
+                <label>Fill Direction</label><select name="fill_direction">
+                    <option value="1" {% if p.fill_direction == '1' %}selected{% endif %}>From Start</option>
+                    <option value="2" {% if p.fill_direction == '2' %}selected{% endif %}>From End</option>
+                </select>
+            </div>
+            <button type="submit" style="width:100%; padding:10px; background:var(--accent-green); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
+        </form>
+    </div>
+
+    <div class="content">
+        <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
+        <h1>Hydrotest Analysis Results</h1>
+        
+        <div class="stats-grid">
+            <div class="card"><h4>Pre-pack psig{% if p.override_prepack is not none %} (overridden){% endif %}</h4><p>{{ sec.prepack_psi|round(0)|int }} psig</p></div>
+            <div class="card"><h4>Vent Threshold{% if p.override_vent is not none %} (overridden){% endif %}</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
+            <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
+            <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
+            <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft</p></div>
+            {% if fill_time %}
+            <div class="card"><h4>Time to Fill</h4><p>{{ fill_time }} (HH:MM)</p></div>
+            {% endif %}
+            {% if dew_time %}
+            <div class="card"><h4>Time to Dewater</h4><p>{{ dew_time }} (HH:MM)</p></div>
+            {% endif %}
+            {% if prepack_time %}
+            <div class="card"><h4>Time to Pre-pack</h4><p>{{ prepack_time }} (HH:MM)</p></div>
+            {% endif %}
+        </div>
+
+        <!-- Print Button and Options -->
+        <button style="padding:10px 20px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;" onclick="togglePrintOptions()">Print</button>
+        <div id="printOptions" style="display:none; margin-top:10px;">
+            <form id="printForm" action="/print" method="GET" target="_blank">
+                <label>Paper Size</label>
+                <select name="paper_size">
+                    <option value="8.5x11">8.5x11 (Letter)</option>
+                    <option value="11x17">11x17 (Tabloid)</option>
+                </select>
+                <label>Orientation</label>
+                <select name="orientation">
+                    <option value="portrait">Portrait</option>
+                    <option value="landscape">Landscape</option>
+                </select>
+                <button type="submit" style="padding:10px 20px; background:#28a745; color:white;">Generate Print View</button>
+            </form>
+        </div>
+        
+        <details open>
+            <summary>Pressure Profile</summary>
+            <div class="plot-box">
+                {{ plot1 | safe }}
+            </div>
+        </details>
+
+        <details open>
+            <summary>Filling Profile</summary>
+            <div class="plot-box">
+                {{ plot2 | safe }}
+            </div>
+        </details>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="text-align:left">Station</th>
+                    <th>Elevation</th>
+                    <th>Test Window Minimum</th>
+                    <th>Target Test Pressure</th>
+                    <th>Test Window Maximum</th>
+                    <th>SMYS Limit</th>
+                    <th>% SMYS</th>
+                    <th>Status</th>
+                    <th>Cumulative Gal</th>
+                    <th>Prepack psig</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for idx, row in sec.table_data.iterrows() %}
+                <tr>
+                    <td style="text-align:left">{{ row['Station']|station_format }}</td>
+                    <td>{{ "{:.1f}".format(row['Elevation']) }}</td>
+                    <td>{{ row['Lower_Bound_P']|int }}</td>
+                    <td>{{ row['Local_P']|int }}</td>
+                    <td>{{ row['Upper_Bound_P']|int }}</td>
+                    <td>{{ row['SMYS_Limit']|int }}</td>
+                    <td>{{ row['Percent_SMYS']|round(1) }}</td>
+                    <td>
+                        {% if row['Local_P'] > row['SMYS_Limit'] %}
+                        <span class="warning">OVER SMYS</span>
+                        {% else %}
+                        <span style="color:green">OK</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ "{:,.0f}".format(row['Cum_Gal']) }}</td>
+                    <td>{{ row['Prepack_Profile']|round(0)|int }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+<script>
+    function togglePrintOptions() {
+        var elem = document.getElementById('printOptions');
+        elem.style.display = (elem.style.display === 'none' || elem.style.display === '') ? 'block' : 'none';
+    }
+</script>
+</body>
+</html>

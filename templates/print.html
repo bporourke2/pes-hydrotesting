@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Print Hydrotest Analysis</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; }
+        h1 { text-align: center; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+        .card { background: white; padding: 15px; border: 1px solid #ddd; }
+        .card h4 { margin: 0; font-size: 0.75em; text-transform: uppercase; }
+        .card p { margin: 8px 0 0; font-size: 1.2em; font-weight: bold; }
+        .plot-box { margin-bottom: 20px; text-align: center; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6; }
+        td { padding: 10px; text-align: right; border-bottom: 1px solid #eee; }
+        .warning { color: #e74c3c; font-weight: bold; }
+        .controls-grid { display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; }
+        .controls-grid li { flex: 1 1 200px; padding: 10px; box-sizing: border-box; }
+        
+        /* Print-specific styles */
+        @media print {
+            .first-page { page-break-after: always; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+            body { margin: 0; padding: 0; }
+        }
+        
+        /* Dynamic @page based on params */
+        @page {
+            {% if paper_size == '8.5x11' %}
+                size: letter {{ orientation }};
+            {% elif paper_size == '11x17' %}
+                size: tabloid {{ orientation }};
+            {% endif %}
+            margin: 0.5in;
+        }
+    </style>
+</head>
+<body>
+    <div class="first-page">
+        <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
+        <h1>Hydrotest Analysis Results</h1>
+        
+        <h2>Engineering Controls</h2>
+        <ul class="controls-grid">
+            <li>Start Station: {{ p.start|station_format }}</li>
+            <li>End Station: {{ p.end|station_format }}</li>
+            <li>Fill GPM: {{ p.fill_gpm }}</li>
+            <li>Dewater GPM: {{ p.dewater_gpm }}</li>
+            <li>Pre-pack CFM: {{ p.cfm }}</li>
+            <li>OD (inches): {{ p.od }}</li>
+            <li>Min Test Pressure (psig): {{ p.min_p }}</li>
+            <li>Test Site Station: {{ p.test_site|station_format }}</li>
+            <li>Dewater Site Station: {{ p.dewater_site|station_format }}</li>
+            <li>Test Window Lower Buffer: {{ p.min_excess or 25 }}</li>
+            <li>Test Window Size: {{ p.window_upper or 50 }}</li>
+            <li>Override Pre-pack psig: {{ p.override_prepack or 'None' }}</li>
+            <li>Override Vent Threshold psig: {{ p.override_vent or 'None' }}</li>
+            <li>Pipe Grade: {{ p.grade }}</li>
+            <li>SMYS Threshold (%): {{ p.smys_threshold|int or 104 }}</li>
+            <li>Fill Direction: {{ 'From Start' if p.fill_direction == '1' else 'From End' }}</li>
+        </ul>
+        
+        <h2>Analysis Results</h2>
+        <div class="stats-grid">
+            <div class="card"><h4>Pre-pack psig</h4><p>{{ sec.prepack_psi|round(0)|int }} psig</p></div>
+            <div class="card"><h4>Vent Threshold</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
+            <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
+            <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
+            <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft</p></div>
+            {% if fill_time %}
+            <div class="card"><h4>Time to Fill</h4><p>{{ fill_time }} (HH:MM)</p></div>
+            {% endif %}
+            {% if dew_time %}
+            <div class="card"><h4>Time to Dewater</h4><p>{{ dew_time }} (HH:MM)</p></div>
+            {% endif %}
+            {% if prepack_time %}
+            <div class="card"><h4>Time to Pre-pack</h4><p>{{ prepack_time }} (HH:MM)</p></div>
+            {% endif %}
+        </div>
+
+        <h2>Pressure Profile</h2>
+        <div class="plot-box">
+            <img src="data:image/png;base64,{{ plot1 }}" alt="Pressure Profile" style="max-width: 100%;">
+        </div>
+
+        <h2>Filling Profile</h2>
+        <div class="plot-box">
+            <img src="data:image/png;base64,{{ plot2 }}" alt="Filling Profile" style="max-width: 100%;">
+        </div>
+    </div>
+
+    <div class="table-pages">
+        <table>
+            <thead>
+                <tr>
+                    <th style="text-align:left">Station</th>
+                    <th>Elevation</th>
+                    <th>Test Window Minimum</th>
+                    <th>Target Test Pressure</th>
+                    <th>Test Window Maximum</th>
+                    <th>SMYS Limit</th>
+                    <th>% SMYS</th>
+                    <th>Status</th>
+                    <th>Cumulative Gal</th>
+                    <th>Prepack psig</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for idx, row in sec.table_data.iterrows() %}
+                <tr>
+                    <td style="text-align:left">{{ row['Station']|station_format }}</td>
+                    <td>{{ "{:.1f}".format(row['Elevation']) }}</td>
+                    <td>{{ row['Lower_Bound_P']|int }}</td>
+                    <td>{{ row['Local_P']|int }}</td>
+                    <td>{{ row['Upper_Bound_P']|int }}</td>
+                    <td>{{ row['SMYS_Limit']|int }}</td>
+                    <td>{{ row['Percent_SMYS']|round(1) }}</td>
+                    <td>
+                        {% if row['Local_P'] > row['SMYS_Limit'] %}
+                        <span class="warning">OVER SMYS</span>
+                        {% else %}
+                        <span style="color:green">OK</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ "{:,.0f}".format(row['Cum_Gal']) }}</td>
+                    <td>{{ row['Prepack_Profile']|round(0)|int }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<style>
+    .preview-table table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .preview-table th { background: #eee; padding: 5px; border: 1px solid #ccc; }
+    .preview-table td { padding: 5px; border: 1px solid #ccc; }
+    .mapping-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin: 20px 0; }
+</style>
+
+<div style="padding: 40px; font-family: sans-serif;">
+    <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
+    <h2>Data Preview & Column Mapping</h2>
+
+    <h3>Upload Custom Data</h3>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".xlsx">
+        <button type="submit" style="padding:10px 20px; background:blue; color:white;">Upload and Refresh Preview</button>
+    </form>
+
+    <div class="preview-table">{{ preview|safe }}</div>
+
+    <h3>Map Your Columns</h3>
+    <form method="POST">
+        <div class="mapping-grid">
+            <div>
+                <label>Station Column:</label>
+                <select name="col_station" required>
+                    {% for col in columns %}<option value="{{col}}">{{col}}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Elevation Column:</label>
+                <select name="col_elev" required>
+                    {% for col in columns %}<option value="{{col}}">{{col}}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Wall Thickness Column:</label>
+                <select name="col_wt" required>
+                    {% for col in columns %}<option value="{{col}}">{{col}}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Pipe Grade</label>
+                <select name="grade">
+                    <option value="B" {% if p.grade == 'B' %}selected{% endif %}>B (SMYS 35000)</option>
+                    <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42000)</option>
+                    <option value="X52" {% if p.grade == 'X52' %}selected{% endif %}>X52 (SMYS 52000)</option>
+                    <option value="X60" {% if p.grade == 'X60' %}selected{% endif %}>X60 (SMYS 60000)</option>
+                    <option value="X65" {% if p.grade == 'X65' %}selected{% endif %}>X65 (SMYS 65000)</option>
+                    <option value="X70" {% if p.grade == 'X70' %}selected{% endif %}>X70 (SMYS 70000)</option>
+                    <option value="X80" {% if p.grade == 'X80' %}selected{% endif %}>X80 (SMYS 80000)</option>
+                </select>
+            </div>
+            <div>
+                <label>OD (inches)</label>
+                <input type="number" name="od" value="{{ p.od or 42 }}">
+            </div>
+            <div>
+                <label>Min Test Pressure (psig)</label>
+                <input type="number" name="min_p" value="{{ p.min_p or 1850 }}">
+            </div>
+        </div>
+        <button type="submit" style="padding:15px 30px; background:blue; color:white;">Generate Analysis</button>
+    </form>
+</div>
