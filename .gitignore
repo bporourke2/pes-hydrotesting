@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Flask
+instance/
+*.log
+
+# Uploaded files
+uploaded.xlsx
+
+# Misc
+.DS_Store
+Thumbs.db
+*.bak

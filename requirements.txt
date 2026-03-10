@@ -1,0 +1,5 @@
+flask==3.0.3  # Core framework
+pandas==2.2.2  # For data handling
+numpy==1.26.4  # Numerical computations
+matplotlib==3.9.2  # Plotting (used in logic.py)
+plotly==5.24.0  # Interactive plots
