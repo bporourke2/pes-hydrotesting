@@ -17,6 +17,7 @@ def parse_station(st):
         return float(st)
 
 def station_format(x):
+    x = float(x)
     sta = int(x // 100)
     rem = int(x % 100)
     return f"{sta}+{rem:02d}"
@@ -336,11 +337,3 @@ class Section:
         self.points['Percent_SMYS'] = (self.points['Local_P'] / (2 * app.smys * self.points['WT'] / app.od)) * 100
         self.table_data = self.points
 
-    def calc_volume(self, od):
-        vol_ft3 = 0
-        df = self.points.sort_values('Station').reset_index()
-        for i in range(len(df) - 1):
-            dist = abs(df.loc[i+1, 'Station'] - df.loc[i, 'Station'])
-            id_in = od - (2 * df.loc[i, 'WT'])
-            vol_ft3 += (math.pi * (id_in / 24)**2) * dist
-        return vol_ft3 * 7.4805

@@ -1,15 +1,9 @@
 from flask import Flask, render_template, request, session, redirect, url_for
 import math
-from logic import PipelineApp, Section, parse_station  # Added import for parse_station
+from logic import PipelineApp, Section, parse_station, station_format
 
 app = Flask(__name__)
 app.secret_key = "hydrotest_v2_key"
-
-def station_format(x):
-    x = float(x)  # Cast to float for str inputs
-    sta = int(x // 100)
-    rem = int(x % 100)
-    return f"{sta}+{rem:02d}"
 
 app.jinja_env.filters['station_format'] = station_format
 
@@ -35,7 +29,7 @@ def set_demo():
         'test_site': 1218848, 'dewater_site': 1218848, 'smys_threshold': 104, 'fill_direction': '1',
         'min_excess': 25, 'window_upper': 50, 'grade': 'X70'
     }
-    session['file_path'] = 'Testdata.xlsx'  # Explicit for demo
+    session['file_path'] = 'data/Testdata.xlsx'
     return redirect(url_for('mapping'))
 
 @app.route('/mapping', methods=['GET', 'POST'])
@@ -63,7 +57,7 @@ def mapping():
             }
             
             # Pre-populate params based on data after column mapping
-            file_path = session.get('file_path', 'Testdata.xlsx')
+            file_path = session.get('file_path', 'data/Testdata.xlsx')
             logic = PipelineApp(file_path)
             data = logic.full_df
             col_sta = session['col_map']['station']
@@ -117,7 +111,7 @@ def mapping():
             
             return redirect(url_for('results'))
 
-    file_path = session.get('file_path', 'Testdata.xlsx')
+    file_path = session.get('file_path', 'data/Testdata.xlsx')
     logic = PipelineApp(file_path)
     preview_html, columns = logic.get_preview()
     
@@ -177,7 +171,7 @@ def results():
         session['params'] = p  # Persist the update
 
     try:
-        file_path = session.get('file_path', 'Testdata.xlsx')
+        file_path = session.get('file_path', 'data/Testdata.xlsx')
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
         app_logic = PipelineApp(file_path, od=float(p['od']), smys=smys)
         sec = Section(app_logic, p, col_map)
@@ -192,9 +186,6 @@ def results():
         
         # Calculate vent_gallons
         vent_gallons = sec.cum_gal_at_vent if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
-        
-        # Test print for debug
-        print("vent_gallons:", vent_gallons)
         
         plot1, plot2 = app_logic.generate_plot(sec.table_data, min_test=float(p['min_p']) if p.get('min_p') else None, params=p, gauge_lower=sec.gauge_lower, gauge_upper=sec.gauge_upper, prepack_time=prepack_time, sec=sec)
         fill_minutes = math.ceil(sec.volume_gal / float(p['fill_gpm'])) if p.get('fill_gpm') and float(p['fill_gpm']) > 0 else None
@@ -219,7 +210,7 @@ def print_view():
         return "No data available for printing."
 
     try:
-        file_path = session.get('file_path', 'Testdata.xlsx')
+        file_path = session.get('file_path', 'data/Testdata.xlsx')
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
         app_logic = PipelineApp(file_path, od=float(p['od']), smys=smys)
         sec = Section(app_logic, p, col_map)
