@@ -3,3 +3,6 @@ pandas==2.2.2  # For data handling
 numpy==1.26.4  # Numerical computations
 matplotlib==3.9.2  # Plotting (used in logic.py)
 plotly==5.24.0  # Interactive plots
+authlib==1.3.2  # OIDC/OAuth2 client
+requests==2.32.3  # HTTP client for token exchange
+python-dotenv==1.0.1  # Load .env file

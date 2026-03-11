@@ -20,6 +20,9 @@ uploaded.xlsx
 # Saved analyses (server-side user data)
 saves/
 
+# Secrets
+.env
+
 # Misc
 .DS_Store
 Thumbs.db

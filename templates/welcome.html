@@ -52,6 +52,11 @@
     </style>
 </head>
 <body>
+    <div style="position:absolute; top:20px; right:24px; font-size:0.85em; color:#7f8c8d;">
+        {{ session.user.name or session.user.email }}
+        &nbsp;·&nbsp;
+        <a href="/logout" style="color:#e74c3c; text-decoration:none;">Sign out</a>
+    </div>
     <img src="/static/peslogo.png" alt="PES Logo" class="logo">
     <h1>Hydrotest Planning Tool</h1>
     <p class="subtitle">Pipeline hydrotest engineering analysis</p>
@@ -72,7 +77,7 @@
             <p>Load a previously saved analysis with all engineering controls and settings restored.</p>
             {% set total = saves|length %}
             {% if total > 0 %}
-            <p style="color:#27ae60; font-size:0.85em;">{{ total }} saved analysis{{ 'es' if total != 1 else '' }} across {{ portfolios|length }} portfolio{{ 's' if portfolios|length != 1 else '' }}</p>
+            <p style="color:#27ae60; font-size:0.85em;">{{ total }} saved {{ 'analyses' if total != 1 else 'analysis' }} across {{ portfolios|length }} portfolio{{ 's' if portfolios|length != 1 else '' }}</p>
             {% else %}
             <p style="color:#bdc3c7; font-size:0.85em;">No saved analyses yet</p>
             {% endif %}
@@ -118,7 +123,7 @@
             <div class="portfolio-block">
                 <div class="portfolio-header">
                     <h2>{{ pf.name }}</h2>
-                    <span style="color:#7f8c8d; font-size:0.85em;">{{ group|length }} analysis{{ 'es' if group|length != 1 else '' }}</span>
+                    <span style="color:#7f8c8d; font-size:0.85em;">{{ group|length }} {{ 'analyses' if group|length != 1 else 'analysis' }}</span>
                 </div>
                 <table class="saves-table">
                     <thead><tr>
@@ -166,7 +171,7 @@
         <div class="portfolio-block">
             <div class="portfolio-header">
                 <h2>Uncategorized</h2>
-                <span style="color:#7f8c8d; font-size:0.85em;">{{ ungrouped|length }} analysis{{ 'es' if ungrouped|length != 1 else '' }}</span>
+                <span style="color:#7f8c8d; font-size:0.85em;">{{ ungrouped|length }} {{ 'analyses' if ungrouped|length != 1 else 'analysis' }}</span>
             </div>
             <table class="saves-table">
                 <thead><tr>

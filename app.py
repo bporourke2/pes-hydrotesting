@@ -1,4 +1,7 @@
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv
+from functools import wraps
 import math
 import json
 import uuid
@@ -7,8 +10,57 @@ import os
 from datetime import datetime
 from logic import PipelineApp, Section, parse_station, station_format
 
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = "hydrotest_v2_key"
+app.secret_key = os.environ.get('SECRET_KEY', 'hydrotest_v2_key_dev_only')
+
+# --- Authentik OIDC ---
+_client_id     = os.environ.get('AUTHENTIK_CLIENT_ID')
+_client_secret = os.environ.get('AUTHENTIK_CLIENT_SECRET')
+_app_slug      = os.environ.get('AUTHENTIK_APP_SLUG', 'hydrotest')
+_authentik_base = 'https://auth.thebrendan.online'
+
+oauth = OAuth(app)
+oauth.register(
+    name='authentik',
+    client_id=_client_id,
+    client_secret=_client_secret,
+    server_metadata_url=f'{_authentik_base}/application/o/{_app_slug}/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user'):
+            session['next'] = request.url
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/login')
+def login():
+    callback_url = url_for('auth_callback', _external=True)
+    return oauth.authentik.authorize_redirect(callback_url)
+
+@app.route('/auth/callback')
+def auth_callback():
+    token = oauth.authentik.authorize_access_token()
+    userinfo = token.get('userinfo') or oauth.authentik.userinfo()
+    session['user'] = {
+        'sub':   userinfo.get('sub'),
+        'email': userinfo.get('email'),
+        'name':  userinfo.get('name') or userinfo.get('preferred_username'),
+    }
+    next_url = session.pop('next', None)
+    return redirect(next_url or url_for('welcome'))
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    # Redirect to Authentik end-session endpoint
+    return redirect(f'{_authentik_base}/application/o/{_app_slug}/end-session/')
 
 app.jinja_env.filters['station_format'] = station_format
 
@@ -53,6 +105,7 @@ def load_all_saves():
     return saves
 
 @app.route('/')
+@login_required
 def welcome():
     saves = load_all_saves()
     portfolios = load_portfolios()
@@ -67,6 +120,7 @@ def welcome():
     return render_template('welcome.html', saves=saves, portfolios=portfolios, grouped=grouped, ungrouped=ungrouped)
 
 @app.route('/portfolio/create', methods=['POST'])
+@login_required
 def portfolio_create():
     name = request.form.get('name', '').strip()
     if name:
@@ -77,6 +131,7 @@ def portfolio_create():
     return redirect(url_for(next_page))
 
 @app.route('/portfolio/delete/<portfolio_id>', methods=['POST'])
+@login_required
 def portfolio_delete(portfolio_id):
     portfolios = load_portfolios()
     portfolios = [p for p in portfolios if p['id'] != portfolio_id]
@@ -90,6 +145,7 @@ def portfolio_delete(portfolio_id):
     return redirect(url_for('welcome'))
 
 @app.route('/set_mode/demo')
+@login_required
 def set_demo():
     session['params'] = {
         'start': 1200495, 'end': 1218848, 'od': 42,
@@ -102,6 +158,7 @@ def set_demo():
     return redirect(url_for('mapping'))
 
 @app.route('/mapping', methods=['GET', 'POST'])
+@login_required
 def mapping():
     if request.method == 'POST':
         if 'file' in request.files:
@@ -189,6 +246,7 @@ def mapping():
     return render_template('mapping.html', p=p, preview=preview_html, columns=columns)
 
 @app.route('/results', methods=['GET', 'POST'])
+@login_required
 def results():
     p = session.get('params', {})
     col_map = session.get('col_map')
@@ -277,6 +335,7 @@ def results():
         return f"Calculation Error: {e}"
 
 @app.route('/save', methods=['POST'])
+@login_required
 def save_analysis():
     p = session.get('params', {})
     col_map = session.get('col_map')
@@ -339,6 +398,7 @@ def save_analysis():
     return redirect(url_for('results'))
 
 @app.route('/load/<save_id>')
+@login_required
 def load_save(save_id):
     save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
     if not os.path.exists(save_file):
@@ -352,6 +412,7 @@ def load_save(save_id):
     return redirect(url_for('results'))
 
 @app.route('/delete/<save_id>', methods=['POST'])
+@login_required
 def delete_save(save_id):
     save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
     data_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
@@ -362,6 +423,7 @@ def delete_save(save_id):
     return redirect(request.referrer or url_for('welcome'))
 
 @app.route('/print')
+@login_required
 def print_view():
     p = session.get('params', {})
     col_map = session.get('col_map')

@@ -178,7 +178,10 @@
         <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
         <h1>Hydrotest Analysis Results</h1>
         {% if p.get('analysis_name') %}
-        <h2 style="text-align:center; color:#2c3e50; margin-top:-10px;">{{ p.analysis_name }}</h2>
+        {% set pf_name = portfolios | selectattr('id', 'equalto', p.get('portfolio_id')) | map(attribute='name') | first %}
+        <h2 style="text-align:center; color:#2c3e50; margin-top:-10px;">
+            {{ p.analysis_name }}{% if pf_name %} <span style="font-weight:400; color:#7f8c8d; font-size:0.7em;">· {{ pf_name }}</span>{% endif %}
+        </h2>
         {% endif %}
 
         <div class="stats-grid">
