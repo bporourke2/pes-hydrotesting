@@ -38,6 +38,12 @@
         .saves-list a:hover { background: #3d566e !important; }
     </style>
     <script>
+        {% if save_error %}
+        window.addEventListener('DOMContentLoaded', function() {
+            var btn = document.querySelector('.tab-bar button:nth-child(2)');
+            if (btn) showTab('document', btn);
+        });
+        {% endif %}
         function formatStation(input) {
             let val = parseFloat(input.value.replace(/[+]/g, ''));
             if (!isNaN(val)) {
@@ -95,20 +101,44 @@
 
         <!-- Document Tab -->
         <div id="tab-document" class="tab-content" style="display:none;">
-            {% if save_id %}
-            <div class="doc-meta">
-                <span><strong>{{ p.get('analysis_name') or 'Untitled Analysis' }}</strong></span>
-                <span style="color:#95a5a6; font-size:0.8em; margin-top:4px;">Loaded from save</span>
-                {% if p.get('notes') %}<span style="margin-top:6px;">{{ p.notes }}</span>{% endif %}
+            {% if save_error %}
+            <div style="background:#e74c3c; color:white; padding:8px 12px; border-radius:4px; margin-bottom:12px; font-size:0.85em;">
+                A portfolio is required before saving.
             </div>
+            {% endif %}
+            {% if restored_version %}
+            <div style="background:#e67e22; color:white; padding:8px 12px; border-radius:4px; margin-bottom:12px; font-size:0.85em; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <span>v{{ restored_version }} of v{{ current_save.version if current_save else '?' }} — <em>Save New Version</em> to promote.</span>
+                <a href="/load/{{ save_id }}" style="color:white; font-weight:700; white-space:nowrap; text-decoration:underline;">Latest</a>
+            </div>
+            {% endif %}
+            {% if current_save %}
+            <div class="doc-meta">
+                <span><strong>{{ current_save.name }}</strong> <span style="color:#95a5a6; font-size:0.8em;">{% if restored_version %}v{{ restored_version }} (historical){% else %}v{{ current_save.version }}{% endif %}</span></span>
+                <span style="color:#95a5a6; font-size:0.8em; margin-top:4px;">{% if restored_version %}Current save: {{ current_save.timestamp }}{% else %}Saved {{ current_save.timestamp }}{% endif %}</span>
+                {% if current_save.notes and not restored_version %}<span style="margin-top:6px; font-size:0.85em;">{{ current_save.notes }}</span>{% endif %}
+            </div>
+            {% if current_save.history %}
+            <div style="margin-bottom:12px;">
+                <p style="font-size:0.75em; color:#95a5a6; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Version History</p>
+                {% for h in current_save.history | reverse %}
+                <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.8em; color:#7f8c8d; padding:5px 0; border-bottom:1px solid #3d5166;">
+                    <span>
+                        v{{ h.version }} &nbsp;·&nbsp; {{ h.timestamp }}{% if h.notes %} &nbsp;·&nbsp; <em>{{ h.notes }}</em>{% endif %}
+                    </span>
+                    <a href="/load/{{ save_id }}/version/{{ h.version }}" style="color:#3498db; font-size:0.9em; text-decoration:none; white-space:nowrap; margin-left:10px;">View</a>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
             {% endif %}
             <form method="POST" action="/save">
                 <div class="sidebar-grid">
                     <label>Analysis Name</label>
                     <input type="text" name="analysis_name" value="{{ p.get('analysis_name', '') }}" placeholder="Untitled Analysis">
-                    <label>Portfolio</label>
-                    <select name="portfolio_id">
-                        <option value="">— No Portfolio —</option>
+                    <label>Portfolio <span style="color:#e74c3c;">*</span></label>
+                    <select name="portfolio_id" required>
+                        <option value="" disabled {% if not p.get('portfolio_id') %}selected{% endif %}>— Select Portfolio —</option>
                         {% for pf in portfolios %}
                         <option value="{{ pf.id }}" {% if p.get('portfolio_id') == pf.id %}selected{% endif %}>{{ pf.name }}</option>
                         {% endfor %}
@@ -118,7 +148,7 @@
                 </div>
                 {% if save_id %}
                 <div style="display:flex; gap:8px; margin-top:15px;">
-                    <button type="submit" name="overwrite_id" value="{{ save_id }}" style="flex:1; padding:10px; background:#e67e22; color:white; border:none; border-radius:4px; cursor:pointer;">Overwrite Save</button>
+                    <button type="submit" name="overwrite_id" value="{{ save_id }}" style="flex:1; padding:10px; background:#e67e22; color:white; border:none; border-radius:4px; cursor:pointer;">Save New Version</button>
                     <button type="submit" style="flex:1; padding:10px; background:#2980b9; color:white; border:none; border-radius:4px; cursor:pointer;">Save as New</button>
                 </div>
                 {% else %}
@@ -175,12 +205,27 @@
     </div>
 
     <div class="content">
+        {% if restored_version %}
+        <div style="background:#e67e22; color:white; padding:14px 20px; border-radius:6px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
+            <div>
+                <strong style="font-size:1em;">&#9888; Historical Version — v{{ restored_version }}</strong>
+                <span style="margin-left:12px; font-size:0.9em; opacity:0.9;">Latest is v{{ current_save.version if current_save else '?' }}. Changes here are not saved unless you use <em>Save New Version</em>.</span>
+            </div>
+            <a href="/load/{{ save_id }}" style="background:white; color:#e67e22; padding:7px 16px; border-radius:4px; text-decoration:none; font-weight:700; font-size:0.9em; white-space:nowrap;">Go to Latest</a>
+        </div>
+        {% endif %}
         <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
         <h1>Hydrotest Analysis Results</h1>
         {% if p.get('analysis_name') %}
         {% set pf_name = portfolios | selectattr('id', 'equalto', p.get('portfolio_id')) | map(attribute='name') | first %}
         <h2 style="text-align:center; color:#2c3e50; margin-top:-10px;">
-            {{ p.analysis_name }}{% if pf_name %} <span style="font-weight:400; color:#7f8c8d; font-size:0.7em;">· {{ pf_name }}</span>{% endif %}
+            {{ p.analysis_name }}
+            {% if restored_version %}
+                <span style="font-weight:400; color:#e67e22; font-size:0.6em;">v{{ restored_version }} (historical)</span>
+            {% elif current_save %}
+                <span style="font-weight:400; color:#95a5a6; font-size:0.6em;">v{{ current_save.version }}</span>
+            {% endif %}
+            {% if pf_name %} <span style="font-weight:400; color:#7f8c8d; font-size:0.7em;">· {{ pf_name }}</span>{% endif %}
         </h2>
         {% endif %}
 

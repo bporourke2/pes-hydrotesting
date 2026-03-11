@@ -328,7 +328,16 @@ def results():
         portfolios = load_portfolios()
         save_id = session.get('save_id')
         saves = load_all_saves()
-        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves)
+        # Load version info for the current save if one is loaded
+        current_save = None
+        if save_id:
+            sf = os.path.join(SAVES_DIR, f'{save_id}.json')
+            if os.path.exists(sf):
+                with open(sf) as f:
+                    current_save = json.load(f)
+        save_error = request.args.get('save_error')
+        restored_version = request.args.get('restored_version', type=int)
+        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version)
     except ValueError as ve:
         return f"Input Error: {ve} (Check station formats or numeric values)"
     except Exception as e:
@@ -350,45 +359,65 @@ def save_analysis():
     p['notes'] = notes
     session['params'] = p
 
+    portfolio_id = request.form.get('portfolio_id', '').strip() or None
+    if not portfolio_id:
+        return redirect(url_for('results', save_error='1'))
+
     overwrite_id = request.form.get('overwrite_id', '').strip()
     file_path = session.get('file_path', 'data/Testdata.xlsx')
 
     if overwrite_id:
-        # Overwrite existing save — keep same id and data file path
+        # Overwrite existing save — keep same id and data file path, push old state to history
         save_id = overwrite_id
         existing_file = os.path.join(SAVES_DIR, f'{save_id}.json')
         existing_data_file = None
+        old_history = []
+        old_version = 1
         if os.path.exists(existing_file):
             with open(existing_file) as f:
                 old = json.load(f)
             existing_data_file = old.get('file_path')
+            old_history = old.get('history', [])
+            old_version = old.get('version', 1)
+            # Snapshot the old version into history
+            old_history.append({
+                'version': old_version,
+                'timestamp': old.get('timestamp'),
+                'notes': old.get('notes', ''),
+                'params': old.get('params', {}),
+            })
 
-        # Only re-copy if the current file_path differs from existing saved file
         saved_file = existing_data_file or file_path
         if file_path and file_path not in ('data/Testdata.xlsx',) and os.path.exists(file_path):
             if not existing_data_file or not os.path.exists(existing_data_file):
                 saved_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
                 shutil.copy(file_path, saved_file)
+
+        new_version = old_version + 1
+        history = old_history
     else:
         save_id = str(uuid.uuid4())[:8]
         saved_file = file_path
         if file_path and file_path not in ('data/Testdata.xlsx',) and os.path.exists(file_path):
             saved_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
             shutil.copy(file_path, saved_file)
+        new_version = 1
+        history = []
 
-    portfolio_id = request.form.get('portfolio_id', '').strip() or None
     p['portfolio_id'] = portfolio_id
     session['params'] = p
 
     save_data = {
         'id': save_id,
+        'version': new_version,
         'name': p.get('analysis_name') or 'Untitled Analysis',
         'notes': p.get('notes', ''),
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'portfolio_id': portfolio_id,
         'params': p,
         'col_map': col_map,
-        'file_path': saved_file
+        'file_path': saved_file,
+        'history': history,
     }
 
     with open(os.path.join(SAVES_DIR, f'{save_id}.json'), 'w') as f:
@@ -410,6 +439,25 @@ def load_save(save_id):
     session['file_path'] = data['file_path']
     session['save_id'] = save_id
     return redirect(url_for('results'))
+
+@app.route('/load/<save_id>/version/<int:version_num>')
+@login_required
+def load_version(save_id, version_num):
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return "Save not found.", 404
+    with open(save_file) as f:
+        data = json.load(f)
+    # Find the history entry for this version
+    entry = next((h for h in data.get('history', []) if h['version'] == version_num), None)
+    if not entry:
+        return "Version not found.", 404
+    # Load historical params but keep the current save's col_map and file_path
+    session['params'] = entry['params']
+    session['col_map'] = data['col_map']
+    session['file_path'] = data['file_path']
+    session['save_id'] = save_id  # Still linked to the parent save
+    return redirect(url_for('results', restored_version=version_num))
 
 @app.route('/delete/<save_id>', methods=['POST'])
 @login_required
