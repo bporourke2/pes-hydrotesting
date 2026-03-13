@@ -97,6 +97,12 @@
                 </div>
                 <button type="submit" style="width:100%; padding:10px; margin-top:15px; background:var(--accent-green); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
             </form>
+            {% if save_id %}
+            <div style="margin-top:15px; padding-top:15px; border-top:1px solid #455a64;">
+                <p style="font-size:0.75em; color:#95a5a6; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Test Execution</p>
+                <a href="/pv/{{ save_id }}" style="display:block; padding:10px; background:#8e44ad; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em;">PV Plot &#8594;</a>
+            </div>
+            {% endif %}
         </div>
 
         <!-- Document Tab -->
@@ -247,6 +253,13 @@
             {% endif %}
             {% if prepack_time %}
             <div class="card"><h4>Time to Pre-pack</h4><p>{{ prepack_time }} (HH:MM)</p></div>
+            {% endif %}
+            {% if squeeze_vol %}
+            <div class="card" style="border-top-color: #8e44ad;">
+                <h4>Est. Squeeze Volume</h4>
+                <p>{{ "{:,.1f}".format(squeeze_vol[0]) }}–{{ "{:,.1f}".format(squeeze_vol[1]) }} gal</p>
+                <p style="font-size:0.65em; color:#7f8c8d; margin-top:4px; font-weight:normal;">restrained → unrestrained</p>
+            </div>
             {% endif %}
         </div>
 

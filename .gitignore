@@ -23,6 +23,9 @@ saves/
 # Secrets
 .env
 
+# Local reference documents (not for repo)
+ref/
+
 # Misc
 .DS_Store
 Thumbs.db

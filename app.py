@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from functools import wraps
+import logging
 import math
 import json
 import uuid
@@ -10,9 +12,22 @@ import os
 from datetime import datetime
 from logic import PipelineApp, Section, parse_station, station_format
 
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger('hydrotest')
+
+def log_action(action, detail=''):
+    user = session.get('user', {})
+    name = user.get('name') or user.get('email') or 'anonymous'
+    ip = request.remote_addr or '?'
+    msg = f'[{name}] [{ip}] {action}'
+    if detail:
+        msg += f' — {detail}'
+    logger.info(msg)
+
 load_dotenv()
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get('SECRET_KEY', 'hydrotest_v2_key_dev_only')
 
 # --- Authentik OIDC ---
@@ -54,10 +69,12 @@ def auth_callback():
         'name':  userinfo.get('name') or userinfo.get('preferred_username'),
     }
     next_url = session.pop('next', None)
+    log_action('LOGIN', session['user'].get('email', ''))
     return redirect(next_url or url_for('welcome'))
 
 @app.route('/logout')
 def logout():
+    log_action('LOGOUT')
     session.clear()
     # Redirect to Authentik end-session endpoint
     return redirect(f'{_authentik_base}/application/o/{_app_slug}/end-session/')
@@ -335,9 +352,29 @@ def results():
             if os.path.exists(sf):
                 with open(sf) as f:
                     current_save = json.load(f)
+        # Squeeze volume: gallons to pressurize from 0 to target gauge (conservative = all restrained)
+        squeeze_vol = None
+        try:
+            pts = sec.points.sort_values('Station').reset_index(drop=True)
+            total_len = sum(abs(pts.loc[i+1,'Station'] - pts.loc[i,'Station']) for i in range(len(pts)-1))
+            weighted_wt = sum(abs(pts.loc[i+1,'Station'] - pts.loc[i,'Station']) * (pts.loc[i,'WT'] + pts.loc[i+1,'WT']) / 2 for i in range(len(pts)-1))
+            avg_wt = weighted_wt / total_len if total_len > 0 else None
+            if avg_wt:
+                od = float(p['od'])
+                pipe_id = od - 2 * avg_wt
+                C_water = 1 / 300000
+                C_pipe_restrained = 0.75 * pipe_id / (2 * avg_wt * 30000000)
+                C_pipe_free       = 1.00 * pipe_id / (2 * avg_wt * 30000000)
+                slope_restrained = sec.volume_gal * (C_water + C_pipe_restrained)
+                slope_free       = sec.volume_gal * (C_water + C_pipe_free)
+                squeeze_vol = (round(slope_restrained * sec.target_gauge, 1),
+                               round(slope_free * sec.target_gauge, 1))
+        except Exception:
+            squeeze_vol = None
+
         save_error = request.args.get('save_error')
         restored_version = request.args.get('restored_version', type=int)
-        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version)
+        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol)
     except ValueError as ve:
         return f"Input Error: {ve} (Check station formats or numeric values)"
     except Exception as e:
@@ -423,6 +460,8 @@ def save_analysis():
     with open(os.path.join(SAVES_DIR, f'{save_id}.json'), 'w') as f:
         json.dump(save_data, f)
 
+    action = 'SAVE_VERSION' if overwrite_id else 'SAVE_NEW'
+    log_action(action, f'id={save_id} name="{save_data["name"]}" v{new_version}')
     session['save_id'] = save_id
     return redirect(url_for('results'))
 
@@ -434,6 +473,7 @@ def load_save(save_id):
         return "Save not found.", 404
     with open(save_file) as f:
         data = json.load(f)
+    log_action('LOAD', f'id={save_id} name="{data.get("name", "")}"')
     session['params'] = data['params']
     session['col_map'] = data['col_map']
     session['file_path'] = data['file_path']
@@ -452,6 +492,7 @@ def load_version(save_id, version_num):
     entry = next((h for h in data.get('history', []) if h['version'] == version_num), None)
     if not entry:
         return "Version not found.", 404
+    log_action('LOAD_VERSION', f'id={save_id} name="{data.get("name", "")}" v{version_num}')
     # Load historical params but keep the current save's col_map and file_path
     session['params'] = entry['params']
     session['col_map'] = data['col_map']
@@ -464,10 +505,14 @@ def load_version(save_id, version_num):
 def delete_save(save_id):
     save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
     data_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
+    name = ''
     if os.path.exists(save_file):
+        with open(save_file) as f:
+            name = json.load(f).get('name', '')
         os.remove(save_file)
     if os.path.exists(data_file):
         os.remove(data_file)
+    log_action('DELETE', f'id={save_id} name="{name}"')
     return redirect(request.referrer or url_for('welcome'))
 
 @app.route('/print')
@@ -509,6 +554,78 @@ def print_view():
         return render_template('print.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, paper_size=paper_size, orientation=orientation, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station)
     except Exception as e:
         return f"Error generating print view: {e}"
+
+@app.route('/pv/<save_id>')
+@login_required
+def pv_plot(save_id):
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return "Save not found.", 404
+    with open(save_file) as f:
+        data = json.load(f)
+    p = data.get('params', {})
+    total_volume_gal = None
+    avg_wt = None
+    try:
+        file_path = data.get('file_path', 'data/Testdata.xlsx')
+        smys = grade_smys.get(p.get('grade', 'X70'), 70000)
+        app_logic = PipelineApp(file_path, od=float(p['od']), smys=smys)
+        sec = Section(app_logic, p, data.get('col_map', {}))
+        total_volume_gal = round(sec.volume_gal, 1)
+        # Length-weighted average wall thickness (same weighting as volume calc)
+        pts = sec.points.sort_values('Station').reset_index(drop=True)
+        total_len = 0.0
+        weighted_wt = 0.0
+        for i in range(len(pts) - 1):
+            seg_len = abs(pts.loc[i + 1, 'Station'] - pts.loc[i, 'Station'])
+            seg_wt = (pts.loc[i, 'WT'] + pts.loc[i + 1, 'WT']) / 2
+            weighted_wt += seg_len * seg_wt
+            total_len += seg_len
+        if total_len > 0:
+            avg_wt = round(weighted_wt / total_len, 4)
+        total_length_ft = round(sec.length, 0)
+        target_gauge = round(sec.target_gauge, 0)
+        gauge_lower = round(sec.gauge_lower, 0)
+        gauge_upper = round(sec.gauge_upper, 0)
+    except Exception:
+        total_length_ft = None
+        target_gauge = None
+        gauge_lower = None
+        gauge_upper = None
+    smys = grade_smys.get(p.get('grade', 'X70'), 70000)
+    portfolios = load_portfolios()
+    pf_name = next((pf['name'] for pf in portfolios if pf['id'] == data.get('portfolio_id')), None)
+    return render_template('pv.html',
+        save_id=save_id,
+        save_name=data.get('name', 'Untitled'),
+        portfolio_name=pf_name,
+        p=p,
+        total_volume_gal=total_volume_gal,
+        avg_wt=avg_wt,
+        total_length_ft=total_length_ft,
+        smys=smys,
+        target_gauge=target_gauge,
+        gauge_lower=gauge_lower,
+        gauge_upper=gauge_upper,
+        pv_data=data.get('pv_data', {}),
+    )
+
+@app.route('/pv/<save_id>/save', methods=['POST'])
+@login_required
+def pv_save(save_id):
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return jsonify({'error': 'Save not found'}), 404
+    with open(save_file) as f:
+        data = json.load(f)
+    payload = request.get_json()
+    payload['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+    data['pv_data'] = payload
+    with open(save_file, 'w') as f:
+        json.dump(data, f)
+    rows = len(payload.get('readings', []))
+    log_action('PV_SAVE', f'id={save_id} name="{data.get("name", "")}" rows={rows}')
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
