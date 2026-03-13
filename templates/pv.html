@@ -67,6 +67,12 @@
 </head>
 <body>
 
+<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#95a5a6; z-index:200; background:rgba(22,33,62,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">
+    {{ session.user.name or session.user.email }}
+    &nbsp;·&nbsp;
+    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+</div>
+
 <div class="sidebar">
     <div class="sidebar-header">
         <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
@@ -96,7 +102,7 @@
         <div class="computed-val">{{ '{:,.0f}'.format(total_length_ft) if total_length_ft else '—' }}</div>
         <label style="margin-top:10px;">Unrestrained Length (ft) <span style="color:#7f8c8d; font-size:0.85em;">— above ground / expansion joints</span></label>
         <input type="number" id="unrestrained_length" min="0" step="1"
-            value="{{ pv_data.unrestrained_length if pv_data.unrestrained_length is defined and pv_data.unrestrained_length != None else '' }}"
+            value="{{ pv_data.unrestrained_length if (pv_data.unrestrained_length is defined and pv_data.unrestrained_length != None) else (unrestrained_length if unrestrained_length else '') }}"
             placeholder="0" oninput="updateChart()">
         <label style="margin-top:6px;">Restrained Length (ft)</label>
         <div class="computed-val" id="restrained_length_display">—</div>

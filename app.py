@@ -283,7 +283,7 @@ def results():
                     form_dict[key] = p.get(key)  # Fallback to session
 
         # Handle numeric fields to convert strings to floats, fallback if invalid or empty
-        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold']
+        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length']
         for key in numeric_keys:
             if key in form_dict:
                 value = form_dict[key].strip() if form_dict[key] else ''
@@ -293,8 +293,8 @@ def results():
                     except ValueError:
                         form_dict[key] = p.get(key)  # Fallback to previous if invalid
                 else:
-                    if key in ['override_prepack', 'override_vent']:
-                        form_dict[key] = None  # Clear override if blank
+                    if key in ['override_prepack', 'override_vent', 'unrestrained_length']:
+                        form_dict[key] = None  # Clear to default when blank
                     else:
                         form_dict[key] = p.get(key)  # Keep previous if empty for non-overrides
 
@@ -352,23 +352,24 @@ def results():
             if os.path.exists(sf):
                 with open(sf) as f:
                     current_save = json.load(f)
-        # Squeeze volume: gallons to pressurize from 0 to target gauge (conservative = all restrained)
+        # Squeeze volume: gallons to pressurize from 0 to target gauge
         squeeze_vol = None
         try:
             pts = sec.points.sort_values('Station').reset_index(drop=True)
             total_len = sum(abs(pts.loc[i+1,'Station'] - pts.loc[i,'Station']) for i in range(len(pts)-1))
             weighted_wt = sum(abs(pts.loc[i+1,'Station'] - pts.loc[i,'Station']) * (pts.loc[i,'WT'] + pts.loc[i+1,'WT']) / 2 for i in range(len(pts)-1))
             avg_wt = weighted_wt / total_len if total_len > 0 else None
-            if avg_wt:
+            if avg_wt and total_len > 0:
                 od = float(p['od'])
                 pipe_id = od - 2 * avg_wt
                 C_water = 1 / 300000
-                C_pipe_restrained = 0.75 * pipe_id / (2 * avg_wt * 30000000)
-                C_pipe_free       = 1.00 * pipe_id / (2 * avg_wt * 30000000)
-                slope_restrained = sec.volume_gal * (C_water + C_pipe_restrained)
-                slope_free       = sec.volume_gal * (C_water + C_pipe_free)
-                squeeze_vol = (round(slope_restrained * sec.target_gauge, 1),
-                               round(slope_free * sec.target_gauge, 1))
+                unrestrained = float(p.get('unrestrained_length') or 0)
+                unrestrained = min(unrestrained, total_len)
+                restrained = total_len - unrestrained
+                restraint_factor = (restrained * 0.75 + unrestrained * 1.0) / total_len
+                C_pipe = restraint_factor * pipe_id / (2 * avg_wt * 30000000)
+                slope = sec.volume_gal * (C_water + C_pipe)
+                squeeze_vol = round(slope * sec.target_gauge, 1)
         except Exception:
             squeeze_vol = None
 
@@ -608,6 +609,7 @@ def pv_plot(save_id):
         gauge_lower=gauge_lower,
         gauge_upper=gauge_upper,
         pv_data=data.get('pv_data', {}),
+        unrestrained_length=p.get('unrestrained_length') or 0,
     )
 
 @app.route('/pv/<save_id>/save', methods=['POST'])

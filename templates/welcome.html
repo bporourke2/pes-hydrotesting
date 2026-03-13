@@ -52,10 +52,10 @@
     </style>
 </head>
 <body>
-    <div style="position:absolute; top:20px; right:24px; font-size:0.85em; color:#7f8c8d;">
+    <div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
         {{ session.user.name or session.user.email }}
         &nbsp;·&nbsp;
-        <a href="/logout" style="color:#e74c3c; text-decoration:none;">Sign out</a>
+        <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
     </div>
     <img src="/static/peslogo.png" alt="PES Logo" class="logo">
     <h1>Hydrotest Planning Tool</h1>

@@ -94,6 +94,8 @@
                         <option value="1" {% if p.fill_direction == '1' %}selected{% endif %}>From Start</option>
                         <option value="2" {% if p.fill_direction == '2' %}selected{% endif %}>From End</option>
                     </select>
+                    <label>Unrestrained Footage (ft) <span style="font-size:0.8em; color:#95a5a6;">— above ground / expansion joints</span></label>
+                    <input type="number" name="unrestrained_length" value="{{ p.get('unrestrained_length') or '' }}" placeholder="0 (all restrained)" min="0" step="1">
                 </div>
                 <button type="submit" style="width:100%; padding:10px; margin-top:15px; background:var(--accent-green); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
             </form>
@@ -210,6 +212,12 @@
         </div>
     </div>
 
+    <div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        {{ session.user.name or session.user.email }}
+        &nbsp;·&nbsp;
+        <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+    </div>
+
     <div class="content">
         {% if restored_version %}
         <div style="background:#e67e22; color:white; padding:14px 20px; border-radius:6px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
@@ -254,11 +262,11 @@
             {% if prepack_time %}
             <div class="card"><h4>Time to Pre-pack</h4><p>{{ prepack_time }} (HH:MM)</p></div>
             {% endif %}
-            {% if squeeze_vol %}
+            {% if squeeze_vol is not none %}
             <div class="card" style="border-top-color: #8e44ad;">
                 <h4>Est. Squeeze Volume</h4>
-                <p>{{ "{:,.1f}".format(squeeze_vol[0]) }}–{{ "{:,.1f}".format(squeeze_vol[1]) }} gal</p>
-                <p style="font-size:0.65em; color:#7f8c8d; margin-top:4px; font-weight:normal;">restrained → unrestrained</p>
+                <p>{{ "{:,.1f}".format(squeeze_vol) }} gal</p>
+                <p style="font-size:0.65em; color:#7f8c8d; margin-top:4px; font-weight:normal;">to pressurize to target gauge</p>
             </div>
             {% endif %}
         </div>
