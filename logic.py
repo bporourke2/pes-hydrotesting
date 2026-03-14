@@ -26,14 +26,13 @@ def station_format(x):
     return f"{sign}{sta}+{rem:02d}"
 
 class PipelineApp:
-    def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04, head_factor=0.433):
+    def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04, head_factor=0.433, _df=None):
         self.od = od
         self.smys = smys
         self.test_percent = test_percent
         self.head_factor = head_factor
         self.survey_file = survey_file
-        # Load from the first sheet
-        self.full_df = pd.read_excel(survey_file, sheet_name=0)
+        self.full_df = _df if _df is not None else pd.read_excel(survey_file, sheet_name=0)
 
     def get_preview(self):
         return self.full_df.head(10).to_html(classes='preview-table'), self.full_df.columns.tolist()
@@ -140,7 +139,7 @@ class PipelineApp:
 
             add_plotly_markers(fig, markers)
 
-            plot1 = fig.to_html(full_html=False, include_plotlyjs=True)
+            plot1 = fig.to_json(engine='json')
 
             # Second plot - Filling Profile
             fig2 = go.Figure()
@@ -183,7 +182,7 @@ class PipelineApp:
 
             add_plotly_markers(fig2, markers + fig2_extra)
 
-            plot2 = fig2.to_html(full_html=False, include_plotlyjs=True)
+            plot2 = fig2.to_json(engine='json')
 
             return plot1, plot2
 
@@ -373,7 +372,11 @@ class Section:
         
         # Round lower bound down to nearest 5, then build window off that
         raw_target = target_gauge_at_test_site - max_head_loss
-        self.gauge_lower = math.floor((raw_target - window_upper / 2) / 5) * 5
+        gauge_lower_floored = math.floor((raw_target - window_upper / 2) / 5) * 5
+        # Ensure the highest elevation point still sees at least min_test_req.
+        # Floor rounding can eat into the buffer when min_excess is small.
+        min_gauge_lower = min_test_req + (high_elev - test_elev) * app.head_factor
+        self.gauge_lower = max(gauge_lower_floored, math.ceil(min_gauge_lower / 5) * 5)
         self.gauge_upper = self.gauge_lower + window_upper
         self.target_gauge = self.gauge_lower + window_upper / 2
         
@@ -381,6 +384,14 @@ class Section:
         self.points['Lower_Bound_P'] = self.gauge_lower + (test_elev - self.points['Elevation']) * app.head_factor
         self.points['Upper_Bound_P'] = self.gauge_upper + (test_elev - self.points['Elevation']) * app.head_factor
         self.points['SMYS_Limit'] = app.test_percent * (2 * app.smys * self.points['WT'] / app.od)
+
+        # Flag stations where the lower test bound falls below the minimum test pressure
+        below_mask = self.points['Lower_Bound_P'] < min_test_req
+        self.min_bound_violations = self.points[below_mask][['Station', 'Lower_Bound_P']].copy() if below_mask.any() else None
+
+        # Flag stations where the upper test bound exceeds the SMYS limit
+        above_mask = self.points['Upper_Bound_P'] > self.points['SMYS_Limit']
+        self.smys_bound_violations = self.points[above_mask][['Station', 'Upper_Bound_P', 'SMYS_Limit']].copy() if above_mask.any() else None
         
         # Cumulative backpressure logic to account for passed highs
         ascending = params.get('fill_direction') == '1'

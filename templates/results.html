@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Hydrotest Engineering Analysis</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <style>
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #f4f7f6; }
@@ -140,10 +140,21 @@
             </div>
             {% endif %}
             {% endif %}
+            <!-- Project Info summary + edit link -->
+            {% set pi = session.get('project_info', {}) %}
+            {% if pi %}
+            <div style="background:#2d4a63; border-radius:5px; padding:10px 12px; margin-bottom:12px; font-size:0.8em; color:#bdc3c7;">
+                {% if pi.get('owner_company') %}<div style="margin-bottom:3px;"><span style="color:#95a5a6;">Company:</span> {{ pi.owner_company }}</div>{% endif %}
+                {% if pi.get('governing_code') %}<div style="margin-bottom:3px;"><span style="color:#95a5a6;">Code:</span> {{ pi.governing_code }}</div>{% endif %}
+                {% if pi.get('testing_contractor') %}<div><span style="color:#95a5a6;">Contractor:</span> {{ pi.testing_contractor }}</div>{% endif %}
+            </div>
+            {% endif %}
+            <a href="/project_setup?next=results" style="display:block; padding:8px; background:#455a64; color:#ecf0f1; text-align:center; border-radius:4px; text-decoration:none; font-size:0.82em; margin-bottom:14px;">&#9998; Edit Project Info</a>
+
             <form method="POST" action="/save">
                 <div class="sidebar-grid">
-                    <label>Analysis Name</label>
-                    <input type="text" name="analysis_name" value="{{ p.get('analysis_name', '') }}" placeholder="Untitled Analysis">
+                    <label>Test Segment</label>
+                    <input type="text" name="analysis_name" value="{{ p.get('analysis_name', '') }}" placeholder="e.g. Seg 1A">
                     <label>Portfolio <span style="color:#e74c3c;">*</span></label>
                     <select name="portfolio_id" required>
                         <option value="" disabled {% if not p.get('portfolio_id') %}selected{% endif %}>— Select Portfolio —</option>
@@ -276,6 +287,16 @@
             <strong>&#9888; SMYS Threshold Exceeded</strong> — Maximum {{ max_smys_pct|round(1) }}% at {{ max_smys_station|station_format }} exceeds the {{ p.smys_threshold|int }}% limit. Review the table below for all affected stations.
         </div>
         {% endif %}
+        {% if min_bound_violations is not none %}
+        <div style="background:#fdf2f2; border:1px solid #e74c3c; border-left:5px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:20px; color:#c0392b;">
+            <strong>&#9888; Test Window Below Minimum</strong> — The lower test bound falls below the minimum test pressure ({{ p.min_p|int }} psig) at {{ min_bound_violations|length }} station(s). Highlighted in red below. Increase the test window buffer or adjust the test site to resolve.
+        </div>
+        {% endif %}
+        {% if smys_bound_violations is not none %}
+        <div style="background:#fdf2f2; border:1px solid #e74c3c; border-left:5px solid #e74c3c; border-radius:6px; padding:12px 16px; margin-bottom:20px; color:#c0392b;">
+            <strong>&#9888; Test Window Exceeds SMYS Limit</strong> — The upper test bound exceeds the SMYS pressure limit at {{ smys_bound_violations|length }} station(s). Highlighted in red below. Reduce the test window size or adjust the test site to resolve.
+        </div>
+        {% endif %}
 
         <!-- Action Buttons -->
         <a href="/" style="display:inline-block; padding:10px 20px; background:#7f8c8d; color:white; border-radius:4px; text-decoration:none; margin-right:10px;">&#8962; Home</a>
@@ -285,16 +306,25 @@
         <details open>
             <summary>Pressure Profile</summary>
             <div class="plot-box">
-                {{ plot1 | safe }}
+                <div id="plot1_div"></div>
             </div>
         </details>
 
         <details open>
             <summary>Filling Profile</summary>
             <div class="plot-box">
-                {{ plot2 | safe }}
+                <div id="plot2_div"></div>
             </div>
         </details>
+
+        <script>
+            (function() {
+                var fig1 = {{ plot1_json | tojson }};
+                var fig2 = {{ plot2_json | tojson }};
+                Plotly.react('plot1_div', fig1.data, fig1.layout, {responsive: true});
+                Plotly.react('plot2_div', fig2.data, fig2.layout, {responsive: true});
+            })();
+        </script>
 
         <table id="data-table">
             <thead>
@@ -313,16 +343,23 @@
             </thead>
             <tbody>
                 {% for idx, row in sec.table_data.iterrows() %}
-                <tr>
+                {% set low_viol = row['Lower_Bound_P'] < p.min_p|float %}
+                {% set high_viol = row['Upper_Bound_P'] > row['SMYS_Limit'] %}
+                {% set any_viol = low_viol or high_viol %}
+                <tr {% if any_viol %}style="background:#fdf2f2;"{% endif %}>
                     <td style="text-align:left" data-val="{{ row['Station'] }}">{{ row['Station']|station_format }}</td>
                     <td data-val="{{ row['Elevation'] }}">{{ "{:.1f}".format(row['Elevation']) }}</td>
-                    <td data-val="{{ row['Lower_Bound_P'] }}">{{ row['Lower_Bound_P']|int }}</td>
+                    <td data-val="{{ row['Lower_Bound_P'] }}" {% if low_viol %}class="warning"{% endif %}>{{ row['Lower_Bound_P']|int }}</td>
                     <td data-val="{{ row['Local_P'] }}">{{ row['Local_P']|int }}</td>
-                    <td data-val="{{ row['Upper_Bound_P'] }}">{{ row['Upper_Bound_P']|int }}</td>
+                    <td data-val="{{ row['Upper_Bound_P'] }}" {% if high_viol %}class="warning"{% endif %}>{{ row['Upper_Bound_P']|int }}</td>
                     <td data-val="{{ row['SMYS_Limit'] }}">{{ row['SMYS_Limit']|int }}</td>
                     <td data-val="{{ row['Percent_SMYS'] }}">{{ row['Percent_SMYS']|round(1) }}</td>
-                    <td data-val="{{ 1 if row['Local_P'] > row['SMYS_Limit'] else 0 }}">
-                        {% if row['Local_P'] > row['SMYS_Limit'] %}
+                    <td data-val="{{ 2 if (low_viol and high_viol) else (1 if (low_viol or high_viol) else 0) }}">
+                        {% if low_viol and high_viol %}
+                        <span class="warning">BELOW MIN / OVER SMYS</span>
+                        {% elif low_viol %}
+                        <span class="warning">BELOW MIN</span>
+                        {% elif high_viol %}
                         <span class="warning">OVER SMYS</span>
                         {% else %}
                         <span style="color:green">OK</span>

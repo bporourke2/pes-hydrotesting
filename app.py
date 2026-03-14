@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
@@ -28,6 +29,23 @@ load_dotenv()
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+Compress(app)
+
+# Survey DataFrame cache: {(file_path, mtime): DataFrame}
+_df_cache = {}
+
+def get_cached_df(file_path):
+    try:
+        mtime = os.path.getmtime(file_path)
+    except OSError:
+        return None
+    key = (file_path, mtime)
+    if key not in _df_cache:
+        if len(_df_cache) > 20:
+            _df_cache.clear()
+        import pandas as pd
+        _df_cache[key] = pd.read_excel(file_path, sheet_name=0)
+    return _df_cache[key]
 app.secret_key = os.environ.get('SECRET_KEY', 'hydrotest_v2_key_dev_only')
 
 # --- Authentik OIDC ---
@@ -95,6 +113,7 @@ grade_smys = {
 }
 
 PORTFOLIOS_FILE = os.path.join(SAVES_DIR, '_portfolios.json')
+COMPANIES_FILE  = os.path.join(SAVES_DIR, '_companies.json')
 
 def load_portfolios():
     if os.path.exists(PORTFOLIOS_FILE):
@@ -108,6 +127,19 @@ def load_portfolios():
 def save_portfolios(portfolios):
     with open(PORTFOLIOS_FILE, 'w') as f:
         json.dump(portfolios, f)
+
+def load_companies():
+    if os.path.exists(COMPANIES_FILE):
+        try:
+            with open(COMPANIES_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_companies(companies):
+    with open(COMPANIES_FILE, 'w') as f:
+        json.dump(companies, f)
 
 def load_all_saves():
     saves = []
@@ -127,14 +159,37 @@ def welcome():
     saves = load_all_saves()
     portfolios = load_portfolios()
     pf_map = {pf['id']: pf['name'] for pf in portfolios}
-    # Group saves by portfolio
-    grouped = []
-    for pf in portfolios:
-        group = [s for s in saves if s.get('portfolio_id') == pf['id']]
-        if group:
-            grouped.append({'id': pf['id'], 'name': pf['name'], 'saves': group})
-    ungrouped = [s for s in saves if not s.get('portfolio_id')]
-    return render_template('welcome.html', saves=saves, portfolios=portfolios, grouped=grouped, ungrouped=ungrouped)
+
+    # Build company_tree: Company > Portfolio > Spread > Test Segment (save)
+    from collections import OrderedDict
+    # tree_raw[company][pf_id][spread] = [saves]
+    tree_raw = OrderedDict()
+    for s in saves:
+        pi = s.get('project_info') or {}
+        company = pi.get('owner_company', '').strip() or 'No Company'
+        pf_id   = s.get('portfolio_id') or '__none__'
+        spread  = pi.get('spread', '').strip() or 'No Spread'
+        if company not in tree_raw:
+            tree_raw[company] = OrderedDict()
+        if pf_id not in tree_raw[company]:
+            tree_raw[company][pf_id] = OrderedDict()
+        if spread not in tree_raw[company][pf_id]:
+            tree_raw[company][pf_id][spread] = []
+        tree_raw[company][pf_id][spread].append(s)
+
+    company_names = sorted(tree_raw.keys(), key=lambda c: (c == 'No Company', c.lower()))
+    company_tree = []
+    for company in company_names:
+        pf_groups = []
+        for pf_id, spread_map in tree_raw[company].items():
+            pf_name = pf_map.get(pf_id, 'Uncategorized') if pf_id != '__none__' else 'Uncategorized'
+            spreads = []
+            for spread_name, group_saves in spread_map.items():
+                spreads.append({'name': spread_name, 'saves': group_saves})
+            pf_groups.append({'id': pf_id, 'name': pf_name, 'spreads': spreads})
+        company_tree.append({'company': company, 'portfolios': pf_groups})
+
+    return render_template('welcome.html', saves=saves, portfolios=portfolios, company_tree=company_tree)
 
 @app.route('/portfolio/create', methods=['POST'])
 @login_required
@@ -142,10 +197,26 @@ def portfolio_create():
     name = request.form.get('name', '').strip()
     if name:
         portfolios = load_portfolios()
-        portfolios.append({'id': str(uuid.uuid4())[:8], 'name': name})
+        portfolios.append({
+            'id': str(uuid.uuid4())[:8],
+            'name': name,
+            'company': request.form.get('company', '').strip() or None,
+        })
         save_portfolios(portfolios)
     next_page = request.form.get('next', 'welcome')
     return redirect(url_for(next_page))
+
+@app.route('/portfolio/edit/<portfolio_id>', methods=['POST'])
+@login_required
+def portfolio_edit(portfolio_id):
+    portfolios = load_portfolios()
+    for pf in portfolios:
+        if pf['id'] == portfolio_id:
+            pf['name']    = request.form.get('name', pf['name']).strip() or pf['name']
+            pf['company'] = request.form.get('company', '').strip() or None
+            break
+    save_portfolios(portfolios)
+    return redirect(url_for('settings'))
 
 @app.route('/portfolio/delete/<portfolio_id>', methods=['POST'])
 @login_required
@@ -159,7 +230,101 @@ def portfolio_delete(portfolio_id):
             save['portfolio_id'] = None
             with open(os.path.join(SAVES_DIR, f"{save['id']}.json"), 'w') as f:
                 json.dump(save, f)
-    return redirect(url_for('welcome'))
+    next_page = request.args.get('next', 'welcome')
+    return redirect(url_for(next_page))
+
+@app.route('/settings', methods=['GET'])
+@login_required
+def settings():
+    return render_template('settings.html', portfolios=load_portfolios(), companies=load_companies())
+
+@app.route('/settings/company/add', methods=['POST'])
+@login_required
+def company_add():
+    name = request.form.get('name', '').strip()
+    if name:
+        companies = load_companies()
+        if name not in companies:
+            companies.append(name)
+            companies.sort(key=str.lower)
+            save_companies(companies)
+            log_action('COMPANY_ADD', name)
+    return redirect(url_for('settings'))
+
+@app.route('/settings/company/delete', methods=['POST'])
+@login_required
+def company_delete():
+    name = request.form.get('name', '').strip()
+    if name:
+        companies = load_companies()
+        companies = [c for c in companies if c != name]
+        save_companies(companies)
+        log_action('COMPANY_DELETE', name)
+    return redirect(url_for('settings'))
+
+@app.route('/project_setup', methods=['GET', 'POST'])
+@login_required
+def project_setup():
+    portfolios = load_portfolios()
+    companies = load_companies()
+    governing_codes = [
+        '49 CFR Part 192 (Gas)',
+        '49 CFR Part 195 (Liquids)',
+        'ASME B31.4 (Liquids)',
+        'ASME B31.8 (Gas)',
+        'Other',
+    ]
+    # Build spreads_by_portfolio from existing saves
+    saves = load_all_saves()
+    spreads_by_portfolio = {}
+    for s in saves:
+        pid = s.get('portfolio_id') or s.get('project_info', {}).get('portfolio_id')
+        spread = (s.get('project_info') or {}).get('spread', '').strip()
+        if pid and spread:
+            spreads_by_portfolio.setdefault(pid, [])
+            if spread not in spreads_by_portfolio[pid]:
+                spreads_by_portfolio[pid].append(spread)
+
+    if request.method == 'POST':
+        pi = {
+            'governing_code':     request.form.get('governing_code', '').strip(),
+            'owner_company':      (request.form.get('owner_company_other') or request.form.get('owner_company', '')).strip(),
+            'portfolio_id':       request.form.get('portfolio_id', '').strip() or None,
+            'spread':             request.form.get('spread', '').strip(),
+            'testing_contractor': request.form.get('testing_contractor', '').strip(),
+            'company_approver': {
+                'name':  request.form.get('approver_name', '').strip(),
+                'phone': request.form.get('approver_phone', '').strip(),
+                'email': request.form.get('approver_email', '').strip(),
+            },
+            'contractor_rep': {
+                'name':  request.form.get('rep_name', '').strip(),
+                'phone': request.form.get('rep_phone', '').strip(),
+                'email': request.form.get('rep_email', '').strip(),
+            },
+        }
+        new_pf_name = request.form.get('new_portfolio_name', '').strip()
+        if new_pf_name and not pi['portfolio_id']:
+            new_pf = {'id': str(uuid.uuid4())[:8], 'name': new_pf_name, 'company': pi.get('owner_company') or None}
+            portfolios.append(new_pf)
+            save_portfolios(portfolios)
+            pi['portfolio_id'] = new_pf['id']
+        session['project_info'] = pi
+        if pi.get('portfolio_id'):
+            p = session.get('params', {})
+            p['portfolio_id'] = pi['portfolio_id']
+            session['params'] = p
+        next_page = request.form.get('next', 'mapping')
+        log_action('PROJECT_SETUP', f'company="{pi["owner_company"]}" code="{pi["governing_code"]}"')
+        if next_page == 'results':
+            return redirect(url_for('results'))
+        session.pop('save_id', None)
+        return redirect(url_for('mapping'))
+    next_page = request.args.get('next', 'mapping')
+    return render_template('project_setup.html', pi=session.get('project_info', {}),
+                           portfolios=portfolios, companies=companies,
+                           governing_codes=governing_codes, next_page=next_page,
+                           spreads_by_portfolio=spreads_by_portfolio)
 
 @app.route('/set_mode/demo')
 @login_required
@@ -171,6 +336,12 @@ def set_demo():
         'min_excess': 25, 'window_upper': 50, 'grade': 'X70'
     }
     session['file_path'] = 'data/Testdata.xlsx'
+    session['project_info'] = {
+        'governing_code': '49 CFR Part 192', 'owner_company': 'Demo Company',
+        'portfolio_id': None, 'testing_contractor': 'PES',
+        'company_approver': {'name': '', 'phone': '', 'email': ''},
+        'contractor_rep': {'name': '', 'phone': '', 'email': ''},
+    }
     session.pop('save_id', None)
     return redirect(url_for('mapping'))
 
@@ -318,7 +489,7 @@ def results():
     try:
         file_path = session.get('file_path', 'data/Testdata.xlsx')
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
-        app_logic = PipelineApp(file_path, od=float(p['od']), smys=smys)
+        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, _df=get_cached_df(file_path))
         sec = Section(app_logic, p, col_map)
 
         # Moved prepack_time calc here
@@ -375,7 +546,9 @@ def results():
 
         save_error = request.args.get('save_error')
         restored_version = request.args.get('restored_version', type=int)
-        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol)
+        min_bound_violations = sec.min_bound_violations
+        smys_bound_violations = sec.smys_bound_violations
+        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
     except ValueError as ve:
         return f"Input Error: {ve} (Check station formats or numeric values)"
     except Exception as e:
@@ -452,6 +625,7 @@ def save_analysis():
         'notes': p.get('notes', ''),
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'portfolio_id': portfolio_id,
+        'project_info': session.get('project_info', {}),
         'params': p,
         'col_map': col_map,
         'file_path': saved_file,
@@ -479,6 +653,7 @@ def load_save(save_id):
     session['col_map'] = data['col_map']
     session['file_path'] = data['file_path']
     session['save_id'] = save_id
+    session['project_info'] = data.get('project_info', {})
     return redirect(url_for('results'))
 
 @app.route('/load/<save_id>/version/<int:version_num>')
@@ -498,7 +673,8 @@ def load_version(save_id, version_num):
     session['params'] = entry['params']
     session['col_map'] = data['col_map']
     session['file_path'] = data['file_path']
-    session['save_id'] = save_id  # Still linked to the parent save
+    session['save_id'] = save_id
+    session['project_info'] = data.get('project_info', {})
     return redirect(url_for('results', restored_version=version_num))
 
 @app.route('/delete/<save_id>', methods=['POST'])
@@ -530,7 +706,7 @@ def print_view():
     try:
         file_path = session.get('file_path', 'data/Testdata.xlsx')
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
-        app_logic = PipelineApp(file_path, od=float(p['od']), smys=smys)
+        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, _df=get_cached_df(file_path))
         sec = Section(app_logic, p, col_map)
 
         atm = 14.7
@@ -570,7 +746,7 @@ def pv_plot(save_id):
     try:
         file_path = data.get('file_path', 'data/Testdata.xlsx')
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
-        app_logic = PipelineApp(file_path, od=float(p['od']), smys=smys)
+        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, _df=get_cached_df(file_path))
         sec = Section(app_logic, p, data.get('col_map', {}))
         total_volume_gal = round(sec.volume_gal, 1)
         # Length-weighted average wall thickness (same weighting as volume calc)
