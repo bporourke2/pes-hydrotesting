@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PV Plot — {{ save_name }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root { --sidebar-width: 380px; --primary-bg: #2c3e50; --accent: #8e44ad; --accent-green: #27ae60; --text-light: #ecf0f1; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+
+        /* Sidebar */
+        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
+        .sidebar-header a:hover { color: white; }
+        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
+        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; }
+        label { display: block; font-size: 0.82em; color: #bdc3c7; margin-bottom: 3px; margin-top: 8px; }
+        label:first-child { margin-top: 0; }
+        input[type="number"], input[type="text"], select {
+            width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64;
+            color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit;
+        }
+        input[type="number"]:focus, input[type="text"]:focus { outline: none; border-color: var(--accent); }
+        .computed-val { background: #1a252f; border: 1px solid #34495e; border-radius: 4px; padding: 7px 10px; font-size: 0.88em; color: #27ae60; font-weight: 600; margin-top: 4px; }
+        .btn { display: block; width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-green { background: var(--accent-green); color: white; }
+        .btn-danger { background: #c0392b; color: white; }
+        .btn:hover { opacity: 0.88; }
+        .save-status { font-size: 0.78em; text-align: center; margin-top: 6px; height: 16px; }
+        .save-status.ok { color: #27ae60; }
+        .save-status.err { color: #e74c3c; }
+
+        /* Main content */
+        .main { margin-left: var(--sidebar-width); flex: 1; display: flex; flex-direction: column; padding: 24px; gap: 20px; }
+        .chart-container { background: #16213e; border-radius: 8px; padding: 20px; height: 50vh; max-height: 50vh; display: flex; flex-direction: column; position: sticky; top: 24px; z-index: 10; }
+        .chart-container canvas { flex: 1; min-height: 0; width: 100% !important; }
+        .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .chart-header h3 { margin: 0; font-size: 1em; }
+        .slope-badges { display: flex; gap: 10px; }
+        .badge { padding: 4px 10px; border-radius: 12px; font-size: 0.78em; font-weight: 600; }
+        .badge-theoretical { background: rgba(231,76,60,0.2); color: #e74c3c; border: 1px solid #e74c3c; }
+        .badge-actual { background: rgba(52,152,219,0.2); color: #3498db; border: 1px solid #3498db; }
+        .badge-match { background: rgba(39,174,96,0.2); color: #27ae60; border: 1px solid #27ae60; }
+        .badge-warn { background: rgba(230,126,34,0.2); color: #e67e22; border: 1px solid #e67e22; }
+
+        /* Table */
+        .table-container { background: #16213e; border-radius: 8px; padding: 20px; }
+        .table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .table-header h3 { margin: 0; font-size: 1em; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #1a252f; padding: 8px 10px; text-align: left; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.5px; color: #95a5a6; border-bottom: 1px solid #2c3e50; }
+        td { padding: 4px 6px; border-bottom: 1px solid #1a252f; }
+        td input { width: 100%; padding: 6px 8px; background: #0d1b2a; border: 1px solid #2c3e50; color: white; border-radius: 3px; font-size: 0.88em; font-family: inherit; }
+        td input:focus { outline: none; border-color: var(--accent); background: #0a1520; }
+        td.gal-cell { color: #27ae60; font-size: 0.88em; padding-left: 10px; font-family: monospace; }
+        td.del-cell { width: 36px; text-align: center; }
+        td.del-cell button { background: none; border: none; color: #7f8c8d; cursor: pointer; font-size: 1.1em; padding: 4px 6px; border-radius: 3px; }
+        td.del-cell button:hover { color: #e74c3c; background: rgba(231,76,60,0.1); }
+        .add-row-btn { margin-top: 10px; padding: 7px 16px; background: #2c3e50; color: #bdc3c7; border: 1px dashed #455a64; border-radius: 4px; cursor: pointer; font-size: 0.85em; width: 100%; }
+        .add-row-btn:hover { background: #34495e; color: white; }
+    </style>
+</head>
+<body>
+
+<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#95a5a6; z-index:200; background:rgba(22,33,62,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">
+    {{ session.user.name or session.user.email }}
+    &nbsp;·&nbsp;
+    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+</div>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
+        <h2>{{ save_name }}</h2>
+        <p>{% if portfolio_name %}{{ portfolio_name }} &nbsp;·&nbsp; {% endif %}PV Plot — Test Execution</p>
+    </div>
+
+    <!-- Pump Setup -->
+    <div class="sidebar-section">
+        <h3>Pump Setup</h3>
+        <label>Number of Pistons</label>
+        <input type="number" id="pistons" min="1" max="6" step="1" value="{{ pv_data.pump.pistons if pv_data.pump else 3 }}" oninput="updateGalPerStroke()">
+        <label>Piston Diameter (in)</label>
+        <input type="number" id="piston_dia" min="0.5" max="20" step="0.01" value="{{ pv_data.pump.piston_diameter if pv_data.pump else '' }}" placeholder="e.g. 4.5" oninput="updateGalPerStroke()">
+        <label>Stroke Length (in)</label>
+        <input type="number" id="stroke_len" min="0.1" max="60" step="0.01" value="{{ pv_data.pump.stroke_length if pv_data.pump else '' }}" placeholder="e.g. 10" oninput="updateGalPerStroke()">
+        <label style="margin-top:10px;">Gallons / Stroke</label>
+        <div class="computed-val" id="gal_per_stroke_display">—</div>
+    </div>
+
+    <!-- Theoretical Slope Inputs -->
+    <div class="sidebar-section">
+        <h3>Theoretical Slope</h3>
+        <label>Avg. Wall Thickness (in) <span style="color:#7f8c8d; font-size:0.85em;">— length-weighted from data</span></label>
+        <div class="computed-val">{{ avg_wt if avg_wt else '—' }}</div>
+        <label style="margin-top:10px;">Total Pipe Length (ft)</label>
+        <div class="computed-val">{{ '{:,.0f}'.format(total_length_ft) if total_length_ft else '—' }}</div>
+        <label style="margin-top:10px;">Unrestrained Length (ft) <span style="color:#7f8c8d; font-size:0.85em;">— above ground / expansion joints</span></label>
+        <input type="number" id="unrestrained_length" min="0" step="1"
+            value="{{ pv_data.unrestrained_length if (pv_data.unrestrained_length is defined and pv_data.unrestrained_length != None) else (unrestrained_length if unrestrained_length else '') }}"
+            placeholder="0" oninput="updateChart()">
+        <label style="margin-top:6px;">Restrained Length (ft)</label>
+        <div class="computed-val" id="restrained_length_display">—</div>
+        <label style="margin-top:10px;">Total Pipeline Volume (gal)</label>
+        <div class="computed-val">{{ total_volume_gal if total_volume_gal else '—' }}</div>
+        <label style="margin-top:8px;">Theoretical Slope</label>
+        <div class="computed-val" id="theoretical_slope_display">—</div>
+        {% if target_gauge %}
+        <label style="margin-top:10px;">Target Gauge Pressure (test site)</label>
+        <div class="computed-val">{{ target_gauge | int }} psig &nbsp;<span style="color:#7f8c8d; font-size:0.85em;">(window {{ gauge_lower | int }}–{{ gauge_upper | int }} psig)</span></div>
+        {% endif %}
+        <label style="margin-top:8px;">Expected Squeeze Volume</label>
+        <div class="computed-val" id="squeeze_vol_display">—</div>
+    </div>
+
+    <!-- Actions -->
+    <div class="sidebar-section" style="border-bottom:none; margin-top:auto;">
+        <button class="btn btn-green" onclick="saveData()" style="margin-bottom:6px;">Save PV Data</button>
+        <div class="save-status" id="save_status"></div>
+        <button class="btn btn-danger" onclick="clearReadings()" style="margin-top:8px;">Clear All Readings</button>
+    </div>
+</div>
+
+<div class="main">
+    <!-- Chart -->
+    <div class="chart-container">
+        <div class="chart-header">
+            <h3>Pressure vs. Volume</h3>
+            <div class="slope-badges">
+                <span class="badge badge-theoretical">Theoretical</span>
+                <span class="badge badge-actual">Actual</span>
+                <span class="badge badge-match" id="deviation_badge" style="display:none;"></span>
+            </div>
+        </div>
+        <div id="yield_status" style="display:none; border-radius:5px; padding:8px 14px; margin-bottom:12px; align-items:center; justify-content:space-between; gap:16px; font-size:0.85em;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span id="yield_status_icon" style="font-size:1.3em;"></span>
+                <strong id="yield_status_label"></strong>
+            </div>
+            <div style="display:flex; gap:20px; font-size:0.88em; opacity:0.9;">
+                <span id="yield_pressure_pct"></span>
+                <span id="yield_slope_dev"></span>
+                <span id="yield_spm_dev"></span>
+            </div>
+        </div>
+        <canvas id="pvChart"></canvas>
+    </div>
+
+    <!-- Data Entry Table -->
+    <div class="table-container">
+        <div class="table-header">
+            <h3>Test Readings</h3>
+            <span style="font-size:0.8em; color:#7f8c8d;">Tab between fields &nbsp;·&nbsp; Enter to add row</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Cumulative Strokes</th>
+                    <th>Pressure (PSI)</th>
+                    <th>Sec</th>
+                    <th>SPM</th>
+                    <th>Cumul. Volume (gal)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="readings_body">
+            </tbody>
+        </table>
+        <button class="add-row-btn" onclick="addRow()">+ Add Reading</button>
+    </div>
+</div>
+
+<script>
+const OD = {{ p.od | float }} || null;
+const TOTAL_VOLUME_GAL = {{ total_volume_gal if total_volume_gal else 'null' }};
+const AVG_WT = {{ avg_wt if avg_wt else 'null' }};
+const MIN_WT = {{ min_wt if min_wt else 'null' }};
+const TOTAL_LENGTH_FT = {{ total_length_ft if total_length_ft else 'null' }};
+const SMYS = {{ smys | int }};
+const TARGET_GAUGE = {{ target_gauge if target_gauge else 'null' }};
+const GAUGE_LOWER = {{ gauge_lower if gauge_lower else 'null' }};
+const GAUGE_UPPER = {{ gauge_upper if gauge_upper else 'null' }};
+const SAVE_ID = "{{ save_id }}";
+
+// Restore saved readings
+const savedReadings = {{ (pv_data.readings | tojson) if pv_data.readings else '[]' }};
+
+let chart = null;
+
+// --- Pump calc ---
+function getGalPerStroke() {
+    const n = parseFloat(document.getElementById('pistons').value) || 0;
+    const d = parseFloat(document.getElementById('piston_dia').value) || 0;
+    const s = parseFloat(document.getElementById('stroke_len').value) || 0;
+    if (!n || !d || !s) return null;
+    // V = n * (pi/4 * d^2 * s) / 231  (cubic inches to gallons)
+    return n * (Math.PI / 4 * d * d * s) / 231;
+}
+
+function updateGalPerStroke() {
+    const gps = getGalPerStroke();
+    document.getElementById('gal_per_stroke_display').textContent = gps ? gps.toFixed(4) + ' gal/stroke' : '—';
+    recalcGallons();
+    updateChart();
+}
+
+// --- Theoretical slope calc ---
+function getTheoreticalSlopeGalPerPsi() {
+    if (!TOTAL_VOLUME_GAL || !AVG_WT || !OD || !TOTAL_LENGTH_FT) return null;
+    const id = OD - 2 * AVG_WT;
+    if (id <= 0) return null;
+
+    // Resolve restrained / unrestrained lengths
+    const unrestrainedRaw = parseFloat(document.getElementById('unrestrained_length').value);
+    const unrestrained = (!isNaN(unrestrainedRaw) && unrestrainedRaw >= 0)
+        ? Math.min(unrestrainedRaw, TOTAL_LENGTH_FT) : 0;
+    const restrained = TOTAL_LENGTH_FT - unrestrained;
+
+    // Update restrained display
+    document.getElementById('restrained_length_display').textContent =
+        restrained.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' ft';
+
+    // Pipe compressibility per unit pressure per unit volume:
+    //   Restrained (buried): longitudinal strain suppressed → factor 0.75
+    //   Unrestrained (above ground / free ends): factor 1.0
+    const C_water = 1 / 300000;
+    const C_pipe_base = id / (2 * AVG_WT * 30000000);  // gal/psi per gal of volume
+    const restraintFactor = (restrained * 0.75 + unrestrained * 1.0) / TOTAL_LENGTH_FT;
+    const C_pipe = restraintFactor * C_pipe_base;
+    const slope = TOTAL_VOLUME_GAL * (C_water + C_pipe);
+
+    // Squeeze volume: gallons needed to pressurize from 0 to test pressure
+    const squeezeEl = document.getElementById('squeeze_vol_display');
+    if (TARGET_GAUGE && slope) {
+        const sq = slope * TARGET_GAUGE;
+        squeezeEl.textContent = sq.toFixed(1) + ' gal';
+        // Also show window range as tooltip
+        if (GAUGE_LOWER && GAUGE_UPPER) {
+            const sqLow = (slope * GAUGE_LOWER).toFixed(1);
+            const sqHigh = (slope * GAUGE_UPPER).toFixed(1);
+            squeezeEl.title = `Window: ${sqLow}–${sqHigh} gal`;
+        }
+    } else {
+        squeezeEl.textContent = '—';
+    }
+
+    return slope;
+}
+
+// --- Table row management ---
+let rowCount = 0;
+
+function addRow(strokes = '', pressure = '', seconds = '') {
+    rowCount++;
+    const tbody = document.getElementById('readings_body');
+    const row = document.createElement('tr');
+    row.dataset.rowId = rowCount;
+    row.innerHTML = `
+        <td style="color:#7f8c8d; font-size:0.8em; padding-left:10px;">${tbody.children.length + 1}</td>
+        <td><input type="number" class="stroke-input" min="0" step="1" value="${strokes}"
+            oninput="recalcGallons(); recalcSPM(); updateChart();"
+            onkeydown="handleKey(event, this, 'stroke')"></td>
+        <td><input type="number" class="pressure-input" min="0" step="1" value="${pressure}"
+            oninput="updateChart();"
+            onkeydown="handleKey(event, this, 'pressure')"></td>
+        <td><input type="number" class="seconds-input" min="0" step="1" value="${seconds}" placeholder="—"
+            oninput="recalcSPM();"
+            onkeydown="handleKey(event, this, 'seconds')"
+            style="width:70px;"></td>
+        <td class="spm-cell" id="spm_${rowCount}" style="font-size:0.82em; text-align:center;">—</td>
+        <td class="gal-cell" id="gal_${rowCount}">—</td>
+        <td class="del-cell"><button onclick="deleteRow(this)" title="Remove" tabindex="-1">&#215;</button></td>
+    `;
+    tbody.appendChild(row);
+    renumberRows();
+    recalcGallons();
+    recalcSPM();
+    return row;
+}
+
+function deleteRow(btn) {
+    btn.closest('tr').remove();
+    renumberRows();
+    updateChart();
+}
+
+function renumberRows() {
+    const rows = document.querySelectorAll('#readings_body tr');
+    rows.forEach((r, i) => r.cells[0].textContent = i + 1);
+}
+
+function recalcGallons() {
+    const gps = getGalPerStroke();
+    document.querySelectorAll('#readings_body tr').forEach(row => {
+        const strokes = parseFloat(row.querySelector('.stroke-input').value);
+        const galCell = row.querySelector('.gal-cell');
+        if (gps && !isNaN(strokes)) {
+            galCell.textContent = (strokes * gps).toFixed(2);
+        } else {
+            galCell.textContent = '—';
+        }
+    });
+}
+
+function recalcSPM() {
+    const rows = Array.from(document.querySelectorAll('#readings_body tr'));
+
+    // First pass: compute SPM for each valid interval
+    const spmValues = rows.map((row, i) => {
+        if (i === 0) return null;
+        const strokes = parseFloat(row.querySelector('.stroke-input').value);
+        const secs = parseFloat(row.querySelector('.seconds-input').value);
+        const prevStrokes = parseFloat(rows[i - 1].querySelector('.stroke-input').value);
+        if (isNaN(strokes) || isNaN(secs) || secs <= 0 || isNaN(prevStrokes)) return null;
+        return (strokes - prevStrokes) / (secs / 60);
+    });
+
+    // Mean of valid values
+    const valid = spmValues.filter(v => v !== null && v > 0);
+    const mean = valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+
+    // Second pass: display and color by deviation above mean; track max deviation
+    let maxDevPct = null;
+    rows.forEach((row, i) => {
+        const spmCell = row.querySelector('.spm-cell');
+        if (!spmCell) return;
+        const spm = spmValues[i];
+        if (spm === null) {
+            spmCell.textContent = '—';
+            spmCell.style.color = '#7f8c8d';
+            return;
+        }
+        spmCell.textContent = spm.toFixed(1);
+        if (mean === null || valid.length < 2) {
+            spmCell.style.color = '#95a5a6';
+            return;
+        }
+        const devPct = ((spm - mean) / mean) * 100;
+        if (devPct > 0 && (maxDevPct === null || devPct > maxDevPct)) maxDevPct = devPct;
+        spmCell.style.color = devPct > 40 ? '#e74c3c' : devPct > 20 ? '#e67e22' : '#27ae60';
+    });
+    return maxDevPct;
+}
+
+function handleKey(e, input, type) {
+    const isForward = (e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter';
+    const isBack = e.key === 'Tab' && e.shiftKey;
+
+    if (isForward && type === 'pressure') {
+        e.preventDefault();
+        input.closest('tr').querySelector('.seconds-input').focus();
+    } else if (isForward && type === 'seconds') {
+        e.preventDefault();
+        const rows = Array.from(document.querySelectorAll('#readings_body tr'));
+        const currentRow = input.closest('tr');
+        const idx = rows.indexOf(currentRow);
+        if (idx < rows.length - 1) {
+            rows[idx + 1].querySelector('.stroke-input').focus();
+        } else {
+            const newRow = addRow();
+            newRow.querySelector('.stroke-input').focus();
+        }
+    } else if (isForward && type === 'stroke') {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            input.closest('tr').querySelector('.pressure-input').focus();
+        }
+    } else if (isBack && type === 'stroke') {
+        const rows = Array.from(document.querySelectorAll('#readings_body tr'));
+        const currentRow = input.closest('tr');
+        const idx = rows.indexOf(currentRow);
+        if (idx > 0) {
+            e.preventDefault();
+            rows[idx - 1].querySelector('.seconds-input').focus();
+        }
+    } else if (isBack && type === 'pressure') {
+        e.preventDefault();
+        input.closest('tr').querySelector('.stroke-input').focus();
+    } else if (isBack && type === 'seconds') {
+        e.preventDefault();
+        input.closest('tr').querySelector('.pressure-input').focus();
+    }
+}
+
+// --- Chart ---
+function getReadings() {
+    const gps = getGalPerStroke();
+    const readings = [];
+    document.querySelectorAll('#readings_body tr').forEach(row => {
+        const strokes = parseFloat(row.querySelector('.stroke-input').value);
+        const pressure = parseFloat(row.querySelector('.pressure-input').value);
+        if (!isNaN(strokes) && !isNaN(pressure) && gps) {
+            readings.push({ x: strokes * gps, y: pressure });
+        }
+    });
+    return readings.sort((a, b) => a.x - b.x);
+}
+
+function buildTheoreticalLine(readings) {
+    const slope = getTheoreticalSlopeGalPerPsi(); // gal/psi
+    if (!slope) return [];
+    // Anchor theoretical line to first actual reading, or origin if no readings
+    let x0 = 0, y0 = 0;
+    if (readings.length > 0) { x0 = readings[0].x; y0 = readings[0].y; }
+    // Max pressure: highest actual reading or min test pressure or 1500
+    const maxP = readings.length > 0
+        ? Math.max(...readings.map(r => r.y)) * 1.2
+        : 1500;
+    const x1 = x0 + (maxP - y0) * slope;
+    return [{ x: x0, y: y0 }, { x: x1, y: maxP }];
+}
+
+function calcDeviation(readings) {
+    const slope = getTheoreticalSlopeGalPerPsi();
+    if (!slope || readings.length < 2) return null;
+    // Fit actual slope via least squares from first point
+    const x0 = readings[0].x, y0 = readings[0].y;
+    let num = 0, den = 0;
+    for (const r of readings) {
+        const dx = r.x - x0;
+        const dp = r.y - y0;
+        num += dx * dp;
+        den += dx * dx;
+    }
+    if (den === 0 || num === 0) return null;
+    const actualGalPerPsi = den / num; // gal/psi from regression
+    const pct = ((actualGalPerPsi - slope) / slope) * 100;
+    return pct;
+}
+
+function niceStep(v) {
+    if (!v || v <= 0) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(v)));
+    const norm = v / mag;
+    if (norm <= 1) return mag;
+    if (norm <= 2) return 2 * mag;
+    if (norm <= 5) return 5 * mag;
+    return 10 * mag;
+}
+
+function calcXScaling(slope) {
+    // Halliburton: volume per 10 psi ÷ 3, rounded to nice number → x-axis step size
+    if (!slope || slope <= 0) return { stepSize: undefined };
+    const rawStep = (slope * 10) / 3;
+    return { stepSize: niceStep(rawStep) };
+}
+
+function updateChart() {
+    const slope = getTheoreticalSlopeGalPerPsi();
+    document.getElementById('theoretical_slope_display').textContent =
+        slope ? slope.toFixed(4) + ' gal/psi' : '—';
+
+    const readings = getReadings();
+    const theoretical = buildTheoreticalLine(readings);
+
+    const deviationPct = calcDeviation(readings);
+    const badge = document.getElementById('deviation_badge');
+    if (deviationPct !== null) {
+        badge.style.display = '';
+        const abs = Math.abs(deviationPct);
+        badge.textContent = `Slope dev: ${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(1)}%`;
+        badge.className = 'badge ' + (abs < 10 ? 'badge-match' : abs < 20 ? 'badge-warn' : 'badge-danger');
+    } else {
+        badge.style.display = 'none';
+    }
+
+    // --- Yield status panel ---
+    const statusEl = document.getElementById('yield_status');
+    const maxP = readings.length > 0 ? Math.max(...readings.map(r => r.y)) : null;
+    // Use MIN_WT for conservative yield detection (weakest point in the section)
+    const yieldWT = MIN_WT || AVG_WT;
+    const yieldP = (yieldWT && OD && SMYS) ? (2 * SMYS * yieldWT / OD) : null;
+    const pressurePct = (maxP && yieldP) ? (maxP / yieldP * 100) : null;
+    const slopeDev = deviationPct !== null ? Math.abs(deviationPct) : null;
+    const maxSpmDev = recalcSPM();
+
+    if (readings.length < 2 || (pressurePct === null && slopeDev === null && maxSpmDev === null)) {
+        statusEl.style.display = 'none';
+    } else {
+        statusEl.style.display = 'flex';
+        const yieldSuspected = (slopeDev !== null && slopeDev > 20) || (pressurePct !== null && pressurePct > 95) || (maxSpmDev !== null && maxSpmDev > 40);
+        const monitor        = (slopeDev !== null && slopeDev > 10) || (pressurePct !== null && pressurePct > 90) || (maxSpmDev !== null && maxSpmDev > 20);
+
+        let bg, color, icon, label;
+        if (yieldSuspected) {
+            bg = 'rgba(192,57,43,0.25)'; color = '#e74c3c'; icon = '⚠'; label = 'POTENTIAL YIELD — STOP AND EVALUATE';
+        } else if (monitor) {
+            bg = 'rgba(230,126,34,0.2)'; color = '#e67e22'; icon = '●'; label = 'MONITOR — Approaching limits';
+        } else {
+            bg = 'rgba(39,174,96,0.15)'; color = '#27ae60'; icon = '✓'; label = 'ALL CLEAR';
+        }
+        statusEl.style.background = bg;
+        statusEl.style.border = `1px solid ${color}`;
+        statusEl.style.color = color;
+        document.getElementById('yield_status_icon').textContent = icon;
+        document.getElementById('yield_status_label').textContent = label;
+        document.getElementById('yield_pressure_pct').textContent =
+            pressurePct !== null ? `Pressure: ${pressurePct.toFixed(1)}% of yield (${yieldP.toFixed(0)} psi)` : '';
+        document.getElementById('yield_slope_dev').textContent =
+            slopeDev !== null ? `Slope dev: ${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(1)}%` : '';
+        document.getElementById('yield_spm_dev').textContent =
+            maxSpmDev !== null ? `SPM dev: +${maxSpmDev.toFixed(0)}%` : '';
+    }
+
+    const xScale = calcXScaling(slope);
+
+    if (!chart) {
+        const ctx = document.getElementById('pvChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'Actual',
+                        data: readings,
+                        borderColor: '#3498db',
+                        backgroundColor: '#3498db',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        showLine: true,
+                        tension: 0,
+                        borderWidth: 2,
+                        order: 1,
+                    },
+                    {
+                        label: 'Theoretical',
+                        data: theoretical,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'transparent',
+                        pointRadius: 0,
+                        showLine: true,
+                        borderDash: [8, 4],
+                        borderWidth: 2,
+                        order: 2,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Cumulative Volume (gallons)', color: '#95a5a6' },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#95a5a6', stepSize: xScale.stepSize },
+                    },
+                    y: {
+                        title: { display: true, text: 'Pressure (PSI)', color: '#95a5a6' },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#95a5a6' },
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#ecf0f1', boxWidth: 20 } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label}: (${ctx.parsed.x.toFixed(2)} gal, ${ctx.parsed.y.toFixed(0)} psi)`
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        chart.data.datasets[0].data = readings;
+        chart.data.datasets[1].data = theoretical;
+        chart.options.scales.x.ticks.stepSize = xScale.stepSize;
+        chart.update('none');
+    }
+}
+
+// --- Save / Clear ---
+function saveData() {
+    const gps = getGalPerStroke();
+    const rows = [];
+    document.querySelectorAll('#readings_body tr').forEach(row => {
+        const s = row.querySelector('.stroke-input').value;
+        const p = row.querySelector('.pressure-input').value;
+        const sec = row.querySelector('.seconds-input').value;
+        if (s !== '' || p !== '') rows.push({ strokes: parseFloat(s) || 0, pressure: parseFloat(p) || 0, seconds: sec !== '' ? parseFloat(sec) : null });
+    });
+    const payload = {
+        pump: {
+            pistons: parseFloat(document.getElementById('pistons').value) || null,
+            piston_diameter: parseFloat(document.getElementById('piston_dia').value) || null,
+            stroke_length: parseFloat(document.getElementById('stroke_len').value) || null,
+            gal_per_stroke: gps,
+        },
+        unrestrained_length: parseFloat(document.getElementById('unrestrained_length').value) || 0,
+        readings: rows,
+    };
+    const status = document.getElementById('save_status');
+    fetch(`/pv/${SAVE_ID}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    }).then(r => r.json()).then(d => {
+        if (d.status === 'ok') { status.textContent = 'Saved ✓'; status.className = 'save-status ok'; }
+        else { status.textContent = 'Error saving'; status.className = 'save-status err'; }
+        setTimeout(() => status.textContent = '', 3000);
+    }).catch(() => { status.textContent = 'Error saving'; status.className = 'save-status err'; });
+}
+
+function clearReadings() {
+    if (!confirm('Clear all readings?')) return;
+    document.getElementById('readings_body').innerHTML = '';
+    rowCount = 0;
+    updateChart();
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Restore saved readings or start with 3 empty rows
+    if (savedReadings.length > 0) {
+        savedReadings.forEach(r => addRow(r.strokes, r.pressure, r.seconds ?? ''));
+    } else {
+        addRow(); addRow(); addRow();
+    }
+    updateGalPerStroke();
+    updateChart();
+});
+</script>
+</body>
+</html>

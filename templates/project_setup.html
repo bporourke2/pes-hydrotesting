@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Project Setup — Hydrotest Tool</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+        .logo { max-width: 180px; margin-bottom: 28px; }
+        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
+        .subtitle { color: #7f8c8d; margin-bottom: 36px; font-size: 0.95em; }
+
+        .card { background: white; border-radius: 10px; padding: 28px 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; width: 100%; max-width: 860px; margin-bottom: 24px; }
+        .card.card-blue { border-top-color: #2c3e50; }
+        .card.card-purple { border-top-color: #8e44ad; }
+        .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; }
+
+        .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .field-grid.three { grid-template-columns: repeat(3, 1fr); }
+        .field-grid.one { grid-template-columns: 1fr; }
+        @media (max-width: 600px) { .field-grid, .field-grid.three { grid-template-columns: 1fr; } }
+
+        label { display: block; font-size: 0.82em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; font-weight: 600; }
+        label .req { color: #e74c3c; }
+        input[type="text"], input[type="email"], input[type="tel"], select {
+            width: 100%; padding: 9px 11px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 0.9em; font-family: inherit; background: white; color: #2c3e50;
+        }
+        input:focus, select:focus { outline: none; border-color: #27ae60; }
+
+        .btn { display: inline-block; padding: 9px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; font-family: inherit; text-decoration: none; line-height: 1.4; transition: opacity 0.15s; }
+        .btn:hover { opacity: 0.88; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-full { width: 100%; display: block; text-align: center; padding: 12px; font-size: 1em; }
+
+        .back-link { color: #7f8c8d; font-size: 0.85em; text-decoration: none; margin-bottom: 20px; display: inline-block; }
+        .back-link:hover { color: #2c3e50; }
+
+        #new-portfolio-row { display: none; margin-top: 10px; }
+        .inline-note { font-size: 0.8em; color: #7f8c8d; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    {{ session.user.name or session.user.email }}
+    &nbsp;·&nbsp;
+    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+</div>
+
+<img src="/static/peslogo.png" alt="PES Logo" class="logo">
+<h1>{{ 'Edit Project Info' if next_page == 'results' else 'Project Setup' }}</h1>
+<p class="subtitle">{{ 'Update project details for this analysis' if next_page == 'results' else 'Enter project details before uploading survey data' }}</p>
+
+<form method="POST" action="/project_setup">
+    <input type="hidden" name="next" value="{{ next_page }}">
+
+    <!-- Project Info -->
+    <div class="card">
+        <h2>Project Information</h2>
+        <div class="field-grid">
+            <div>
+                <label>Governing Code <span class="req">*</span></label>
+                <select name="governing_code" required>
+                    {% for code in governing_codes %}
+                    <option value="{{ code }}" {% if pi.get('governing_code') == code %}selected{% endif %}>{{ code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Owner Company <span class="req">*</span></label>
+                {% if companies %}
+                <select name="owner_company" id="company-select" onchange="handleCompanyChange(this)" required>
+                    <option value="">— Select company —</option>
+                    {% for c in companies %}
+                    <option value="{{ c }}" {% if pi.get('owner_company') == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                    <option value="__other__" {% if pi.get('owner_company') and pi.get('owner_company') not in companies %}selected{% endif %}>Other…</option>
+                </select>
+                <input type="text" name="owner_company_other" id="company-other"
+                    value="{{ pi.get('owner_company', '') if pi.get('owner_company') and pi.get('owner_company') not in companies else '' }}"
+                    placeholder="Enter company name…"
+                    style="display:none; margin-top:8px;">
+                {% else %}
+                <input type="text" name="owner_company" value="{{ pi.get('owner_company', '') }}" placeholder="e.g. Acme Pipeline Co." required>
+                <p class="inline-note">No companies configured yet — <a href="/settings" target="_blank">add them in Settings</a>.</p>
+                {% endif %}
+            </div>
+            <div>
+                <label>Portfolio</label>
+                <select name="portfolio_id" id="portfolio-select" onchange="handlePortfolioChange(this)">
+                    <option value="">— None / Assign later —</option>
+                    {% for pf in portfolios %}
+                    <option value="{{ pf.id }}"
+                        data-company="{{ pf.get('company') or '' }}"
+                        {% if pi.get('portfolio_id') == pf.id %}selected{% endif %}>{{ pf.name }}</option>
+                    {% endfor %}
+                    <option value="__new__">+ Create new portfolio…</option>
+                </select>
+                <div id="new-portfolio-row" style="display:none; margin-top:8px;">
+                    <input type="text" name="new_portfolio_name" id="new-portfolio-name" placeholder="New portfolio name…">
+                    <p class="inline-note">Will be linked to the selected company.</p>
+                </div>
+            </div>
+            <div>
+                <label>Spread</label>
+                <select name="spread" id="spread-select" onchange="handleSpreadChange(this)">
+                    <option value="">— Select portfolio first —</option>
+                    <option value="__new__">+ New spread…</option>
+                </select>
+                <input type="text" name="spread_new" id="spread-new" placeholder="e.g. Spread 1"
+                    style="display:none; margin-top:8px;">
+            </div>
+            <div>
+                <label>Testing Contractor</label>
+                <input type="text" name="testing_contractor" value="{{ pi.get('testing_contractor', '') }}" placeholder="e.g. PES">
+            </div>
+        </div>
+    </div>
+
+    <!-- Company Approver -->
+    <div class="card card-blue">
+        <h2>Company Approver</h2>
+        <div class="field-grid three">
+            <div>
+                <label>Name</label>
+                <input type="text" name="approver_name" value="{{ pi.get('company_approver', {}).get('name', '') }}" placeholder="Full name">
+            </div>
+            <div>
+                <label>Phone</label>
+                <input type="tel" name="approver_phone" value="{{ pi.get('company_approver', {}).get('phone', '') }}" placeholder="(555) 000-0000">
+            </div>
+            <div>
+                <label>Email</label>
+                <input type="email" name="approver_email" value="{{ pi.get('company_approver', {}).get('email', '') }}" placeholder="approver@company.com">
+            </div>
+        </div>
+    </div>
+
+    <!-- Contractor Rep -->
+    <div class="card card-purple">
+        <h2>Contractor Representative</h2>
+        <div class="field-grid three">
+            <div>
+                <label>Name</label>
+                <input type="text" name="rep_name" value="{{ pi.get('contractor_rep', {}).get('name', '') }}" placeholder="Full name">
+            </div>
+            <div>
+                <label>Phone</label>
+                <input type="tel" name="rep_phone" value="{{ pi.get('contractor_rep', {}).get('phone', '') }}" placeholder="(555) 000-0000">
+            </div>
+            <div>
+                <label>Email</label>
+                <input type="email" name="rep_email" value="{{ pi.get('contractor_rep', {}).get('email', '') }}" placeholder="rep@contractor.com">
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-green btn-full">
+        {% if next_page == 'results' %}Save Changes &#10003;{% else %}Continue to File Upload &#8594;{% endif %}
+    </button>
+</form>
+
+{% if next_page == 'results' %}
+<a href="/results" class="back-link" style="margin-top:16px;">&#8592; Back to Analysis</a>
+{% else %}
+<a href="/" class="back-link" style="margin-top:16px;">&#8592; Back to Home</a>
+{% endif %}
+
+<script>
+    var spreadsByPortfolio = {{ spreads_by_portfolio | tojson }};
+    var currentSpread = {{ pi.get('spread', '') | tojson }};
+
+    function handleCompanyChange(sel) {
+        var other = document.getElementById('company-other');
+        if (!other) return;
+        if (sel.value === '__other__') {
+            other.style.display = 'block';
+            other.required = true;
+            sel.removeAttribute('required');
+        } else {
+            other.style.display = 'none';
+            other.required = false;
+            sel.required = true;
+        }
+        filterPortfolios(sel.value === '__other__' ? '' : sel.value);
+        // Reset portfolio and spread when company changes
+        var pfSel = document.getElementById('portfolio-select');
+        if (pfSel && pfSel.options[pfSel.selectedIndex] && pfSel.options[pfSel.selectedIndex].hidden) {
+            pfSel.value = '';
+            populateSpreads('');
+        }
+    }
+
+    function filterPortfolios(company) {
+        var pfSel = document.getElementById('portfolio-select');
+        if (!pfSel) return;
+        Array.from(pfSel.options).forEach(function(opt) {
+            if (opt.value === '' || opt.value === '__new__') { opt.hidden = false; return; }
+            var pco = opt.dataset.company || '';
+            opt.hidden = pco !== '' && pco !== company;
+        });
+        if (pfSel.options[pfSel.selectedIndex] && pfSel.options[pfSel.selectedIndex].hidden) {
+            pfSel.value = '';
+            populateSpreads('');
+        }
+    }
+
+    function populateSpreads(portfolioId, selectedSpread) {
+        var spreadSel = document.getElementById('spread-select');
+        var spreads = spreadsByPortfolio[portfolioId] || [];
+        // Clear existing options (keep placeholder and __new__)
+        spreadSel.innerHTML = '';
+        if (!portfolioId) {
+            spreadSel.add(new Option('— Select portfolio first —', ''));
+        } else if (spreads.length === 0) {
+            spreadSel.add(new Option('— No existing spreads —', ''));
+        } else {
+            spreadSel.add(new Option('— Select spread —', ''));
+        }
+        spreads.forEach(function(s) {
+            var opt = new Option(s, s);
+            spreadSel.add(opt);
+        });
+        spreadSel.add(new Option('+ New spread…', '__new__'));
+        // Restore selection
+        var target = selectedSpread !== undefined ? selectedSpread : currentSpread;
+        if (target && spreads.indexOf(target) !== -1) {
+            spreadSel.value = target;
+        } else if (target && target !== '') {
+            // Pre-existing value not in list — show as new
+            spreadSel.value = '__new__';
+            document.getElementById('spread-new').style.display = 'block';
+            document.getElementById('spread-new').value = target;
+        }
+        handleSpreadChange(spreadSel);
+    }
+
+    function handleSpreadChange(sel) {
+        var newInput = document.getElementById('spread-new');
+        if (sel.value === '__new__') {
+            newInput.style.display = 'block';
+            newInput.required = true;
+        } else {
+            newInput.style.display = 'none';
+            newInput.required = false;
+            newInput.value = '';
+        }
+    }
+
+    function handlePortfolioChange(sel) {
+        var row = document.getElementById('new-portfolio-row');
+        var nameInput = document.getElementById('new-portfolio-name');
+        if (sel.value === '__new__') {
+            row.style.display = 'block';
+            nameInput.required = true;
+        } else {
+            row.style.display = 'none';
+            nameInput.required = false;
+            nameInput.value = '';
+        }
+        populateSpreads(sel.value === '__new__' ? '' : sel.value);
+    }
+
+    // On submit: resolve portfolio __new__ and merge spread value into the `spread` field name
+    document.querySelector('form').addEventListener('submit', function(e) {
+        var pfSel = document.getElementById('portfolio-select');
+        if (pfSel.value === '__new__') pfSel.value = '';
+        // Set the hidden spread field from either select or text input
+        var spreadSel = document.getElementById('spread-select');
+        var spreadNew = document.getElementById('spread-new');
+        var finalSpread = spreadSel.value === '__new__' ? spreadNew.value : spreadSel.value;
+        // Rename spread-select to avoid conflict; set spread value via hidden input
+        spreadSel.name = '';
+        spreadNew.name = 'spread';
+        spreadNew.value = finalSpread;
+        spreadNew.style.display = 'none'; // prevent double submission visibility
+    });
+
+    window.addEventListener('DOMContentLoaded', function() {
+        var sel = document.getElementById('company-select');
+        if (sel) handleCompanyChange(sel);
+        var pfSel = document.getElementById('portfolio-select');
+        if (pfSel) populateSpreads(pfSel.value === '__new__' ? '' : pfSel.value);
+    });
+</script>
+</body>
+</html>

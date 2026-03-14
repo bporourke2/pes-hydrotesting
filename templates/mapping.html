@@ -1,64 +1,136 @@
-<style>
-    .preview-table table { width: 100%; border-collapse: collapse; font-size: 10px; }
-    .preview-table th { background: #eee; padding: 5px; border: 1px solid #ccc; }
-    .preview-table td { padding: 5px; border: 1px solid #ccc; }
-    .mapping-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin: 20px 0; }
-</style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Column Mapping — Hydrotest Tool</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+        .logo { max-width: 180px; margin-bottom: 28px; }
+        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
+        .subtitle { color: #7f8c8d; margin-bottom: 36px; font-size: 0.95em; }
 
-<div style="padding: 40px; font-family: sans-serif;">
-    <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
-    <h2>Data Preview & Column Mapping</h2>
+        .card { background: white; border-radius: 10px; padding: 28px 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; width: 100%; max-width: 860px; margin-bottom: 24px; }
+        .card.card-blue { border-top-color: #2c3e50; }
+        .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
 
-    <h3>Upload Custom Data</h3>
+        /* Upload row */
+        .upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .upload-row input[type="file"] { font-size: 0.88em; color: #555; }
+
+        /* Mapping grid */
+        .mapping-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 20px; }
+        @media (max-width: 640px) { .mapping-grid { grid-template-columns: 1fr; } }
+
+        label { display: block; font-size: 0.82em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; font-weight: 600; }
+        select, input[type="number"] {
+            width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 0.9em; font-family: inherit; background: white; color: #2c3e50;
+            appearance: none;
+        }
+        select:focus, input[type="number"]:focus { outline: none; border-color: #27ae60; }
+
+        /* Preview table */
+        .preview-wrap { overflow-x: auto; max-height: 260px; border: 1px solid #eee; border-radius: 6px; }
+        .preview-wrap table { width: 100%; border-collapse: collapse; font-size: 0.78em; }
+        .preview-wrap th { background: #f8f9fa; padding: 6px 10px; border-bottom: 2px solid #dee2e6; text-align: left; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; position: sticky; top: 0; }
+        .preview-wrap td { padding: 5px 10px; border-bottom: 1px solid #f0f0f0; color: #444; white-space: nowrap; }
+
+        /* Buttons */
+        .btn { display: inline-block; padding: 9px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; font-family: inherit; text-decoration: none; line-height: 1.4; transition: opacity 0.15s; }
+        .btn:hover { opacity: 0.88; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-dark { background: #2c3e50; color: white; }
+        .btn-full { width: 100%; display: block; text-align: center; padding: 11px; font-size: 0.95em; }
+
+        .back-link { color: #7f8c8d; font-size: 0.85em; text-decoration: none; margin-bottom: 20px; display: inline-block; }
+        .back-link:hover { color: #2c3e50; }
+        .divider { border: none; border-top: 1px solid #eee; margin: 18px 0; }
+    </style>
+</head>
+<body>
+
+<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    {{ session.user.name or session.user.email }}
+    &nbsp;·&nbsp;
+    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+</div>
+
+<img src="/static/peslogo.png" alt="PES Logo" class="logo">
+<h1>New Analysis</h1>
+<p class="subtitle">Upload your pipeline survey data and map the required columns</p>
+
+<!-- Upload -->
+<div class="card">
+    <h2>Upload Data File</h2>
     <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".xlsx">
-        <button type="submit" style="padding:10px 20px; background:blue; color:white;">Upload and Refresh Preview</button>
+        <div class="upload-row">
+            <input type="file" name="file" accept=".xlsx">
+            <button type="submit" class="btn btn-dark">Upload &amp; Refresh Preview</button>
+        </div>
     </form>
+    {% if upload_error %}
+    <div style="margin-top:14px; padding:10px 14px; background:#fdf2f2; border:1px solid #e74c3c; border-radius:5px; color:#c0392b; font-size:0.88em;">
+        &#9888; {{ upload_error }}
+    </div>
+    {% elif preview %}
+    <hr class="divider">
+    <h2>Data Preview</h2>
+    <div class="preview-wrap">{{ preview|safe }}</div>
+    {% endif %}
+</div>
 
-    <div class="preview-table">{{ preview|safe }}</div>
-
-    <h3>Map Your Columns</h3>
+<!-- Column Mapping + Parameters -->
+<div class="card card-blue">
+    <h2>Map Columns &amp; Set Parameters</h2>
     <form method="POST">
         <div class="mapping-grid">
             <div>
-                <label>Station Column:</label>
+                <label>Station Column</label>
                 <select name="col_station" required>
-                    {% for col in columns %}<option value="{{col}}">{{col}}</option>{% endfor %}
+                    {% for col in columns %}<option value="{{ col }}">{{ col }}</option>{% endfor %}
                 </select>
             </div>
             <div>
-                <label>Elevation Column:</label>
+                <label>Elevation Column</label>
                 <select name="col_elev" required>
-                    {% for col in columns %}<option value="{{col}}">{{col}}</option>{% endfor %}
+                    {% for col in columns %}<option value="{{ col }}">{{ col }}</option>{% endfor %}
                 </select>
             </div>
             <div>
-                <label>Wall Thickness Column:</label>
+                <label>Wall Thickness Column</label>
                 <select name="col_wt" required>
-                    {% for col in columns %}<option value="{{col}}">{{col}}</option>{% endfor %}
+                    {% for col in columns %}<option value="{{ col }}">{{ col }}</option>{% endfor %}
                 </select>
             </div>
             <div>
                 <label>Pipe Grade</label>
                 <select name="grade">
-                    <option value="B" {% if p.grade == 'B' %}selected{% endif %}>B (SMYS 35000)</option>
-                    <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42000)</option>
-                    <option value="X52" {% if p.grade == 'X52' %}selected{% endif %}>X52 (SMYS 52000)</option>
-                    <option value="X60" {% if p.grade == 'X60' %}selected{% endif %}>X60 (SMYS 60000)</option>
-                    <option value="X65" {% if p.grade == 'X65' %}selected{% endif %}>X65 (SMYS 65000)</option>
-                    <option value="X70" {% if p.grade == 'X70' %}selected{% endif %}>X70 (SMYS 70000)</option>
-                    <option value="X80" {% if p.grade == 'X80' %}selected{% endif %}>X80 (SMYS 80000)</option>
+                    <option value="B"   {% if p.grade == 'B'   %}selected{% endif %}>B (SMYS 35,000)</option>
+                    <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42,000)</option>
+                    <option value="X52" {% if p.grade == 'X52' %}selected{% endif %}>X52 (SMYS 52,000)</option>
+                    <option value="X60" {% if p.grade == 'X60' %}selected{% endif %}>X60 (SMYS 60,000)</option>
+                    <option value="X65" {% if p.grade == 'X65' %}selected{% endif %}>X65 (SMYS 65,000)</option>
+                    <option value="X70" {% if p.grade == 'X70' %}selected{% endif %}>X70 (SMYS 70,000)</option>
+                    <option value="X80" {% if p.grade == 'X80' %}selected{% endif %}>X80 (SMYS 80,000)</option>
                 </select>
             </div>
             <div>
                 <label>OD (inches)</label>
-                <input type="number" name="od" value="{{ p.od or 42 }}">
+                <input type="number" name="od" value="{{ p.od or 42 }}" step="0.001">
             </div>
             <div>
                 <label>Min Test Pressure (psig)</label>
                 <input type="number" name="min_p" value="{{ p.min_p or 1850 }}">
             </div>
         </div>
-        <button type="submit" style="padding:15px 30px; background:blue; color:white;">Generate Analysis</button>
+        <button type="submit" class="btn btn-green btn-full">Generate Analysis &#8594;</button>
     </form>
 </div>
+
+<a href="/project_setup" class="back-link">&#8592; Back to Project Setup</a>
+&nbsp;&nbsp;
+<a href="/" class="back-link">Home</a>
+
+</body>
+</html>

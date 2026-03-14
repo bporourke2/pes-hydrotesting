@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Settings — Hydrotest Tool</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+        .logo { max-width: 160px; margin-bottom: 24px; }
+        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
+        .subtitle { color: #7f8c8d; margin-bottom: 40px; font-size: 0.95em; }
+
+        .card { background: white; border-radius: 10px; padding: 28px 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; width: 100%; max-width: 700px; margin-bottom: 28px; }
+        .card.card-blue { border-top-color: #2980b9; }
+        .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; }
+
+        .item-list { list-style: none; margin-bottom: 18px; }
+        .item-list li { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.92em; color: #2c3e50; }
+        .item-list li:last-child { border-bottom: none; }
+        .item-list .empty { color: #bdc3c7; font-style: italic; font-size: 0.88em; padding: 8px 0; }
+
+        .add-form { display: flex; gap: 8px; }
+        .add-form input { flex: 1; padding: 8px 11px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; }
+        .add-form input:focus { outline: none; border-color: #27ae60; }
+
+        .btn { display: inline-block; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; font-family: inherit; text-decoration: none; }
+        .btn:hover { opacity: 0.88; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-red { background: none; border: none; color: #bdc3c7; cursor: pointer; font-size: 1.1em; line-height: 1; padding: 2px 4px; }
+        .btn-red:hover { color: #e74c3c; }
+
+        .back-link { color: #7f8c8d; font-size: 0.85em; text-decoration: none; margin-top: 4px; display: inline-block; }
+        .back-link:hover { color: #2c3e50; }
+
+        .coming-soon { background: #f8f9fa; border-radius: 6px; padding: 16px; color: #95a5a6; font-size: 0.88em; text-align: center; border: 1px dashed #dee2e6; }
+        .edit-form { display:none; margin-top:8px; padding:10px; background:#f8f9fa; border-radius:6px; gap:8px; flex-wrap:wrap; align-items:center; }
+        .edit-form input, .edit-form select { padding:6px 9px; border:1px solid #ddd; border-radius:4px; font-size:0.85em; font-family:inherit; }
+        .edit-form input:focus, .edit-form select:focus { outline:none; border-color:#2980b9; }
+        .btn-edit { background:none; border:none; color:#bdc3c7; cursor:pointer; font-size:0.85em; padding:2px 6px; }
+        .btn-edit:hover { color:#2980b9; }
+    </style>
+</head>
+<body>
+
+<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    {{ session.user.name or session.user.email }}
+    &nbsp;·&nbsp;
+    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+</div>
+
+<img src="/static/peslogo.png" alt="PES Logo" class="logo">
+<h1>Settings</h1>
+<p class="subtitle">Manage companies, portfolios, and application configuration</p>
+
+<!-- Companies -->
+<div class="card">
+    <h2>Owner Companies</h2>
+    <ul class="item-list">
+        {% for company in companies %}
+        <li>
+            <span>{{ company }}</span>
+            <form method="POST" action="/settings/company/delete" onsubmit="return confirm('Remove ' + {{ company|tojson }} + ' from the list?')">
+                <input type="hidden" name="name" value="{{ company }}">
+                <button type="submit" class="btn-red" title="Remove">&#x2715;</button>
+            </form>
+        </li>
+        {% else %}
+        <li><span class="empty">No companies added yet</span></li>
+        {% endfor %}
+    </ul>
+    <form method="POST" action="/settings/company/add" class="add-form">
+        <input type="text" name="name" placeholder="Company name…" required>
+        <button type="submit" class="btn btn-green">+ Add</button>
+    </form>
+</div>
+
+<!-- Portfolios -->
+<div class="card card-blue">
+    <h2>Portfolios</h2>
+
+    {% set ns = namespace(grouped={}) %}
+    {% for pf in portfolios %}
+        {% set co = pf.get('company') or '— Unassigned —' %}
+        {% if co not in ns.grouped %}{% set _ = ns.grouped.update({co: []}) %}{% endif %}
+        {% set _ = ns.grouped[co].append(pf) %}
+    {% endfor %}
+
+    {% if ns.grouped %}
+    {% for co, pfs in ns.grouped.items() %}
+    <div style="margin-bottom:16px;">
+        <div style="font-size:0.75em; text-transform:uppercase; letter-spacing:0.5px; color:#2980b9; font-weight:700; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #eaf3fb;">{{ co }}</div>
+        <ul class="item-list" style="margin-bottom:0;">
+            {% for pf in pfs %}
+            <li style="flex-direction:column; align-items:stretch;">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <span>{{ pf.name }}</span>
+                    <div style="display:flex; gap:4px;">
+                        <button type="button" class="btn-edit" onclick="toggleEdit('{{ pf.id }}')">&#9998; Edit</button>
+                        <form method="POST" action="/portfolio/delete/{{ pf.id }}?next=settings" onsubmit="return confirm('Delete portfolio ' + {{ pf.name|tojson }} + '? Analyses will become uncategorized.')">
+                            <button type="submit" class="btn-red" title="Delete">&#x2715;</button>
+                        </form>
+                    </div>
+                </div>
+                <form method="POST" action="/portfolio/edit/{{ pf.id }}" id="edit-{{ pf.id }}" class="edit-form" style="display:none; flex-direction:column;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                        <input type="text" name="name" value="{{ pf.name }}" placeholder="Portfolio name" required style="flex:2; min-width:140px;">
+                        <select name="company" style="flex:2; min-width:160px;">
+                            <option value="">— No company —</option>
+                            {% for c in companies %}
+                            <option value="{{ c }}" {% if pf.get('company') == c %}selected{% endif %}>{{ c }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-green" style="padding:6px 14px; font-size:0.85em;">Save</button>
+                        <button type="button" class="btn-edit" onclick="toggleEdit('{{ pf.id }}')">Cancel</button>
+                    </div>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+    {% else %}
+    <ul class="item-list"><li><span class="empty">No portfolios yet</span></li></ul>
+    {% endif %}
+
+    <form method="POST" action="/portfolio/create" class="add-form" style="margin-top:12px; flex-wrap:wrap; gap:8px;">
+        <input type="hidden" name="next" value="settings">
+        <select name="company" style="flex:1; min-width:160px; padding:8px 11px; border:1px solid #ddd; border-radius:4px; font-size:0.9em; font-family:inherit;">
+            <option value="">— No company —</option>
+            {% for c in companies %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="name" placeholder="Portfolio name…" required style="flex:2; min-width:160px;">
+        <button type="submit" class="btn btn-green">+ Add</button>
+    </form>
+</div>
+
+<!-- Permissions (placeholder) -->
+<div class="card" style="border-top-color: #95a5a6;">
+    <h2>Permissions</h2>
+    <div class="coming-soon">User permission management — coming soon</div>
+</div>
+
+<a href="/" class="back-link">&#8592; Back to Home</a>
+
+<script>
+    function toggleEdit(id) {
+        var form = document.getElementById('edit-' + id);
+        form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    }
+</script>
+</body>
+</html>

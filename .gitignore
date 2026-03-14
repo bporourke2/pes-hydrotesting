@@ -16,12 +16,19 @@ instance/
 
 # Uploaded files
 uploaded.xlsx
+uploads/
+
+# QA test scripts
+qa_*.py
 
 # Saved analyses (server-side user data)
 saves/
 
 # Secrets
 .env
+
+# Local reference documents (not for repo)
+ref/
 
 # Misc
 .DS_Store
