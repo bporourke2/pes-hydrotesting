@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Print Hydrotest Analysis</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Static plots only — no Plotly JS needed -->
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; }
         h1 { text-align: center; }
@@ -48,6 +48,19 @@
         <h2 style="text-align:center; margin-top:-10px;">{{ p.analysis_name }}</h2>
         {% endif %}
 
+        {% if pi %}
+        <div style="margin-bottom:20px; border:1px solid #ddd; padding:14px; border-radius:4px; font-size:0.88em;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 24px;">
+                {% if pi.get('governing_code') %}<div><strong>Governing Code:</strong> {{ pi.governing_code }}</div>{% endif %}
+                {% if pi.get('owner_company') %}<div><strong>Owner Company:</strong> {{ pi.owner_company }}</div>{% endif %}
+                {% if pi.get('spread') %}<div><strong>Spread:</strong> {{ pi.spread }}</div>{% endif %}
+                {% if pi.get('testing_contractor') %}<div><strong>Testing Contractor:</strong> {{ pi.testing_contractor }}</div>{% endif %}
+                {% if pi.get('company_approver', {}).get('name') %}<div><strong>Company Approver:</strong> {{ pi.company_approver.name }}{% if pi.company_approver.phone %} &middot; {{ pi.company_approver.phone }}{% endif %}{% if pi.company_approver.email %} &middot; {{ pi.company_approver.email }}{% endif %}</div>{% endif %}
+                {% if pi.get('contractor_rep', {}).get('name') %}<div><strong>Contractor Rep:</strong> {{ pi.contractor_rep.name }}{% if pi.contractor_rep.phone %} &middot; {{ pi.contractor_rep.phone }}{% endif %}{% if pi.contractor_rep.email %} &middot; {{ pi.contractor_rep.email }}{% endif %}</div>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <h2>Engineering Controls</h2>
         <ul class="controls-grid">
             <li>Start Station: {{ p.start|station_format }}</li>
@@ -90,6 +103,17 @@
             {% endif %}
         </div>
 
+        {% if min_bound_violations is defined and min_bound_violations is not none %}
+        <div style="background:#fdf2f2; border:1px solid #e74c3c; border-left:5px solid #e74c3c; padding:10px 14px; margin-bottom:16px; color:#c0392b; font-size:0.85em;">
+            <strong>&#9888; Test Window Below Minimum</strong> — The lower test bound falls below the minimum test pressure ({{ p.min_p|int }} psig) at {{ min_bound_violations|length }} station(s).
+        </div>
+        {% endif %}
+        {% if smys_bound_violations is defined and smys_bound_violations is not none %}
+        <div style="background:#fdf2f2; border:1px solid #e74c3c; border-left:5px solid #e74c3c; padding:10px 14px; margin-bottom:16px; color:#c0392b; font-size:0.85em;">
+            <strong>&#9888; Test Window Exceeds SMYS Limit</strong> — The upper test bound exceeds the SMYS pressure limit at {{ smys_bound_violations|length }} station(s).
+        </div>
+        {% endif %}
+
         <h2>Pressure Profile</h2>
         <div class="plot-box">
             <img src="data:image/png;base64,{{ plot1 }}" alt="Pressure Profile" style="max-width: 100%;">
@@ -128,7 +152,13 @@
                     <td>{{ row['SMYS_Limit']|int }}</td>
                     <td>{{ row['Percent_SMYS']|round(1) }}</td>
                     <td>
-                        {% if row['Local_P'] > row['SMYS_Limit'] %}
+                        {% set low_viol = row['Lower_Bound_P'] < sec.min_test_req %}
+                        {% set high_viol = row['Upper_Bound_P'] > row['SMYS_Limit'] %}
+                        {% if low_viol and high_viol %}
+                        <span class="warning">BELOW MIN / OVER SMYS</span>
+                        {% elif low_viol %}
+                        <span class="warning">BELOW MIN</span>
+                        {% elif high_viol %}
                         <span class="warning">OVER SMYS</span>
                         {% else %}
                         <span style="color:green">OK</span>

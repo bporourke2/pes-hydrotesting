@@ -92,7 +92,7 @@
                     <option value="">— None / Assign later —</option>
                     {% for pf in portfolios %}
                     <option value="{{ pf.id }}"
-                        data-company="{{ pf.get('company', '') }}"
+                        data-company="{{ pf.get('company') or '' }}"
                         {% if pi.get('portfolio_id') == pf.id %}selected{% endif %}>{{ pf.name }}</option>
                     {% endfor %}
                     <option value="__new__">+ Create new portfolio…</option>

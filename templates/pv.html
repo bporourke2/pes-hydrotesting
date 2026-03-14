@@ -137,7 +137,7 @@
                 <span class="badge badge-match" id="deviation_badge" style="display:none;"></span>
             </div>
         </div>
-        <div id="yield_status" style="display:none; border-radius:5px; padding:8px 14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:16px; font-size:0.85em;">
+        <div id="yield_status" style="display:none; border-radius:5px; padding:8px 14px; margin-bottom:12px; align-items:center; justify-content:space-between; gap:16px; font-size:0.85em;">
             <div style="display:flex; align-items:center; gap:10px;">
                 <span id="yield_status_icon" style="font-size:1.3em;"></span>
                 <strong id="yield_status_label"></strong>
@@ -145,6 +145,7 @@
             <div style="display:flex; gap:20px; font-size:0.88em; opacity:0.9;">
                 <span id="yield_pressure_pct"></span>
                 <span id="yield_slope_dev"></span>
+                <span id="yield_spm_dev"></span>
             </div>
         </div>
         <canvas id="pvChart"></canvas>
@@ -162,6 +163,8 @@
                     <th>#</th>
                     <th>Cumulative Strokes</th>
                     <th>Pressure (PSI)</th>
+                    <th>Sec</th>
+                    <th>SPM</th>
                     <th>Cumul. Volume (gal)</th>
                     <th></th>
                 </tr>
@@ -174,9 +177,10 @@
 </div>
 
 <script>
-const OD = {{ p.od | float }};
+const OD = {{ p.od | float }} || null;
 const TOTAL_VOLUME_GAL = {{ total_volume_gal if total_volume_gal else 'null' }};
 const AVG_WT = {{ avg_wt if avg_wt else 'null' }};
+const MIN_WT = {{ min_wt if min_wt else 'null' }};
 const TOTAL_LENGTH_FT = {{ total_length_ft if total_length_ft else 'null' }};
 const SMYS = {{ smys | int }};
 const TARGET_GAUGE = {{ target_gauge if target_gauge else 'null' }};
@@ -252,7 +256,7 @@ function getTheoreticalSlopeGalPerPsi() {
 // --- Table row management ---
 let rowCount = 0;
 
-function addRow(strokes = '', pressure = '') {
+function addRow(strokes = '', pressure = '', seconds = '') {
     rowCount++;
     const tbody = document.getElementById('readings_body');
     const row = document.createElement('tr');
@@ -260,17 +264,23 @@ function addRow(strokes = '', pressure = '') {
     row.innerHTML = `
         <td style="color:#7f8c8d; font-size:0.8em; padding-left:10px;">${tbody.children.length + 1}</td>
         <td><input type="number" class="stroke-input" min="0" step="1" value="${strokes}"
-            oninput="recalcGallons(); updateChart();"
+            oninput="recalcGallons(); recalcSPM(); updateChart();"
             onkeydown="handleKey(event, this, 'stroke')"></td>
         <td><input type="number" class="pressure-input" min="0" step="1" value="${pressure}"
             oninput="updateChart();"
             onkeydown="handleKey(event, this, 'pressure')"></td>
+        <td><input type="number" class="seconds-input" min="0" step="1" value="${seconds}" placeholder="—"
+            oninput="recalcSPM();"
+            onkeydown="handleKey(event, this, 'seconds')"
+            style="width:70px;"></td>
+        <td class="spm-cell" id="spm_${rowCount}" style="font-size:0.82em; text-align:center;">—</td>
         <td class="gal-cell" id="gal_${rowCount}">—</td>
         <td class="del-cell"><button onclick="deleteRow(this)" title="Remove" tabindex="-1">&#215;</button></td>
     `;
     tbody.appendChild(row);
     renumberRows();
     recalcGallons();
+    recalcSPM();
     return row;
 }
 
@@ -298,11 +308,54 @@ function recalcGallons() {
     });
 }
 
+function recalcSPM() {
+    const rows = Array.from(document.querySelectorAll('#readings_body tr'));
+
+    // First pass: compute SPM for each valid interval
+    const spmValues = rows.map((row, i) => {
+        if (i === 0) return null;
+        const strokes = parseFloat(row.querySelector('.stroke-input').value);
+        const secs = parseFloat(row.querySelector('.seconds-input').value);
+        const prevStrokes = parseFloat(rows[i - 1].querySelector('.stroke-input').value);
+        if (isNaN(strokes) || isNaN(secs) || secs <= 0 || isNaN(prevStrokes)) return null;
+        return (strokes - prevStrokes) / (secs / 60);
+    });
+
+    // Mean of valid values
+    const valid = spmValues.filter(v => v !== null && v > 0);
+    const mean = valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+
+    // Second pass: display and color by deviation above mean; track max deviation
+    let maxDevPct = null;
+    rows.forEach((row, i) => {
+        const spmCell = row.querySelector('.spm-cell');
+        if (!spmCell) return;
+        const spm = spmValues[i];
+        if (spm === null) {
+            spmCell.textContent = '—';
+            spmCell.style.color = '#7f8c8d';
+            return;
+        }
+        spmCell.textContent = spm.toFixed(1);
+        if (mean === null || valid.length < 2) {
+            spmCell.style.color = '#95a5a6';
+            return;
+        }
+        const devPct = ((spm - mean) / mean) * 100;
+        if (devPct > 0 && (maxDevPct === null || devPct > maxDevPct)) maxDevPct = devPct;
+        spmCell.style.color = devPct > 40 ? '#e74c3c' : devPct > 20 ? '#e67e22' : '#27ae60';
+    });
+    return maxDevPct;
+}
+
 function handleKey(e, input, type) {
     const isForward = (e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter';
     const isBack = e.key === 'Tab' && e.shiftKey;
 
     if (isForward && type === 'pressure') {
+        e.preventDefault();
+        input.closest('tr').querySelector('.seconds-input').focus();
+    } else if (isForward && type === 'seconds') {
         e.preventDefault();
         const rows = Array.from(document.querySelectorAll('#readings_body tr'));
         const currentRow = input.closest('tr');
@@ -314,21 +367,24 @@ function handleKey(e, input, type) {
             newRow.querySelector('.stroke-input').focus();
         }
     } else if (isForward && type === 'stroke') {
-        // Tab from stroke → pressure in same row, let browser handle it naturally
-        // but guard against jumping to delete button on Enter
         if (e.key === 'Enter') {
             e.preventDefault();
             input.closest('tr').querySelector('.pressure-input').focus();
         }
     } else if (isBack && type === 'stroke') {
-        // Shift-Tab from stroke → go to pressure of previous row
         const rows = Array.from(document.querySelectorAll('#readings_body tr'));
         const currentRow = input.closest('tr');
         const idx = rows.indexOf(currentRow);
         if (idx > 0) {
             e.preventDefault();
-            rows[idx - 1].querySelector('.pressure-input').focus();
+            rows[idx - 1].querySelector('.seconds-input').focus();
         }
+    } else if (isBack && type === 'pressure') {
+        e.preventDefault();
+        input.closest('tr').querySelector('.stroke-input').focus();
+    } else if (isBack && type === 'seconds') {
+        e.preventDefault();
+        input.closest('tr').querySelector('.pressure-input').focus();
     }
 }
 
@@ -372,10 +428,27 @@ function calcDeviation(readings) {
         num += dx * dp;
         den += dx * dx;
     }
-    if (den === 0) return null;
+    if (den === 0 || num === 0) return null;
     const actualGalPerPsi = den / num; // gal/psi from regression
     const pct = ((actualGalPerPsi - slope) / slope) * 100;
     return pct;
+}
+
+function niceStep(v) {
+    if (!v || v <= 0) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(v)));
+    const norm = v / mag;
+    if (norm <= 1) return mag;
+    if (norm <= 2) return 2 * mag;
+    if (norm <= 5) return 5 * mag;
+    return 10 * mag;
+}
+
+function calcXScaling(slope) {
+    // Halliburton: volume per 10 psi ÷ 3, rounded to nice number → x-axis step size
+    if (!slope || slope <= 0) return { stepSize: undefined };
+    const rawStep = (slope * 10) / 3;
+    return { stepSize: niceStep(rawStep) };
 }
 
 function updateChart() {
@@ -400,18 +473,19 @@ function updateChart() {
     // --- Yield status panel ---
     const statusEl = document.getElementById('yield_status');
     const maxP = readings.length > 0 ? Math.max(...readings.map(r => r.y)) : null;
-    // Barlow yield pressure using avg WT (100% SMYS)
-    const yieldP = (AVG_WT && OD && SMYS) ? (2 * SMYS * AVG_WT / OD) : null;
+    // Use MIN_WT for conservative yield detection (weakest point in the section)
+    const yieldWT = MIN_WT || AVG_WT;
+    const yieldP = (yieldWT && OD && SMYS) ? (2 * SMYS * yieldWT / OD) : null;
     const pressurePct = (maxP && yieldP) ? (maxP / yieldP * 100) : null;
     const slopeDev = deviationPct !== null ? Math.abs(deviationPct) : null;
+    const maxSpmDev = recalcSPM();
 
-    if (readings.length < 2 || (pressurePct === null && slopeDev === null)) {
+    if (readings.length < 2 || (pressurePct === null && slopeDev === null && maxSpmDev === null)) {
         statusEl.style.display = 'none';
     } else {
         statusEl.style.display = 'flex';
-        // Determine worst condition
-        const yieldSuspected = (slopeDev !== null && slopeDev > 20) || (pressurePct !== null && pressurePct > 95);
-        const monitor       = (slopeDev !== null && slopeDev > 10) || (pressurePct !== null && pressurePct > 90);
+        const yieldSuspected = (slopeDev !== null && slopeDev > 20) || (pressurePct !== null && pressurePct > 95) || (maxSpmDev !== null && maxSpmDev > 40);
+        const monitor        = (slopeDev !== null && slopeDev > 10) || (pressurePct !== null && pressurePct > 90) || (maxSpmDev !== null && maxSpmDev > 20);
 
         let bg, color, icon, label;
         if (yieldSuspected) {
@@ -430,7 +504,11 @@ function updateChart() {
             pressurePct !== null ? `Pressure: ${pressurePct.toFixed(1)}% of yield (${yieldP.toFixed(0)} psi)` : '';
         document.getElementById('yield_slope_dev').textContent =
             slopeDev !== null ? `Slope dev: ${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(1)}%` : '';
+        document.getElementById('yield_spm_dev').textContent =
+            maxSpmDev !== null ? `SPM dev: +${maxSpmDev.toFixed(0)}%` : '';
     }
+
+    const xScale = calcXScaling(slope);
 
     if (!chart) {
         const ctx = document.getElementById('pvChart').getContext('2d');
@@ -471,7 +549,7 @@ function updateChart() {
                     x: {
                         title: { display: true, text: 'Cumulative Volume (gallons)', color: '#95a5a6' },
                         grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#95a5a6' },
+                        ticks: { color: '#95a5a6', stepSize: xScale.stepSize },
                     },
                     y: {
                         title: { display: true, text: 'Pressure (PSI)', color: '#95a5a6' },
@@ -492,6 +570,7 @@ function updateChart() {
     } else {
         chart.data.datasets[0].data = readings;
         chart.data.datasets[1].data = theoretical;
+        chart.options.scales.x.ticks.stepSize = xScale.stepSize;
         chart.update('none');
     }
 }
@@ -503,7 +582,8 @@ function saveData() {
     document.querySelectorAll('#readings_body tr').forEach(row => {
         const s = row.querySelector('.stroke-input').value;
         const p = row.querySelector('.pressure-input').value;
-        if (s !== '' || p !== '') rows.push({ strokes: parseFloat(s) || 0, pressure: parseFloat(p) || 0 });
+        const sec = row.querySelector('.seconds-input').value;
+        if (s !== '' || p !== '') rows.push({ strokes: parseFloat(s) || 0, pressure: parseFloat(p) || 0, seconds: sec !== '' ? parseFloat(sec) : null });
     });
     const payload = {
         pump: {
@@ -538,7 +618,7 @@ function clearReadings() {
 document.addEventListener('DOMContentLoaded', () => {
     // Restore saved readings or start with 3 empty rows
     if (savedReadings.length > 0) {
-        savedReadings.forEach(r => addRow(r.strokes, r.pressure));
+        savedReadings.forEach(r => addRow(r.strokes, r.pressure, r.seconds ?? ''));
     } else {
         addRow(); addRow(); addRow();
     }

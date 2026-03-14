@@ -35,9 +35,14 @@ class PipelineApp:
         self.full_df = _df if _df is not None else pd.read_excel(survey_file, sheet_name=0)
 
     def get_preview(self):
-        return self.full_df.head(10).to_html(classes='preview-table'), self.full_df.columns.tolist()
+        from markupsafe import escape
+        df_preview = self.full_df.head(10).copy()
+        # Sanitize column names to prevent XSS via |safe rendering
+        df_preview.columns = [str(escape(c)) for c in df_preview.columns]
+        safe_columns = [str(escape(c)) for c in self.full_df.columns]
+        return df_preview.to_html(classes='preview-table'), safe_columns
 
-    def generate_plot(self, df, min_test=None, params=None, gauge_lower=None, gauge_upper=None, prepack_time=None, sec=None, vent_time=None, static=False):
+    def generate_plot(self, df, min_test=None, params=None, gauge_lower=None, gauge_upper=None, prepack_time=None, sec=None, vent_time=None, static=False, smys_threshold_pct=None):
         # Data cleaning to ensure numeric values and no NaNs for Plotly
         df = df.copy()
         for col in ['Station', 'Elevation', 'Local_P', 'SMYS_Limit', 'Lower_Bound_P', 'Upper_Bound_P', 'Prepack_Profile', 'Req_Back_P']:
@@ -54,7 +59,7 @@ class PipelineApp:
 
             # Pressures on right y-axis
             fig.add_trace(go.Scatter(x=df['Station'], y=df['Local_P'], name='Target Test Pressure (psig)', line=dict(color='green'), yaxis='y2', customdata=df['Station_Formatted'], hovertemplate='Station: %{customdata}<br>Target Test Pressure: %{y:.0f} psig<extra></extra>'))
-            fig.add_trace(go.Scatter(x=df['Station'], y=df['SMYS_Limit'], name=f'SMYS Threshold ({int(self.test_percent*100)}%)', line=dict(color='#d62728', dash='dash'), yaxis='y2', customdata=df['Station_Formatted'], hovertemplate='Station: %{customdata}<br>SMYS Limit: %{y:.0f} psig<extra></extra>'))
+            fig.add_trace(go.Scatter(x=df['Station'], y=df['SMYS_Limit'], name=f'SMYS Threshold ({int(smys_threshold_pct or self.test_percent*100)}%)', line=dict(color='#d62728', dash='dash'), yaxis='y2', customdata=df['Station_Formatted'], hovertemplate='Station: %{customdata}<br>SMYS Limit: %{y:.0f} psig<extra></extra>'))
 
             # Red shading for test window exceeding SMYS (from Upper_Bound_P down to SMYS_Limit)
             exceed_mask = df['Upper_Bound_P'] > df['SMYS_Limit']
@@ -252,7 +257,7 @@ class PipelineApp:
 
             ax1.plot(df['Station'], df['Elevation'], label='Elevation (ft)', color='#101820')
             ax2.plot(df['Station'], df['Local_P'], label='Target Test Pressure (psig)', color='green')
-            ax2.plot(df['Station'], df['SMYS_Limit'], label=f'SMYS Threshold ({int(self.test_percent*100)}%)', color='#d62728', linestyle='--')
+            ax2.plot(df['Station'], df['SMYS_Limit'], label=f'SMYS Threshold ({int(smys_threshold_pct or self.test_percent*100)}%)', color='#d62728', linestyle='--')
 
             if 'Lower_Bound_P' in df.columns:
                 ax2.plot(df['Station'], df['Lower_Bound_P'], label='Test Window Minimum', color='orange', linestyle='--')
@@ -331,25 +336,56 @@ class Section:
     def __init__(self, app, params, col_map):
         if not all(k in params for k in ['start', 'end', 'min_p', 'test_site']):
             raise ValueError("Missing required parameters: start, end, min_p, or test_site")
-        
+
+        # Validate OD > 0 (prevents division by zero in SMYS calc)
+        if app.od <= 0:
+            raise ValueError("Outer diameter (OD) must be greater than zero.")
+
+        # Validate column mapping exists in DataFrame
+        for key, col_name in col_map.items():
+            if col_name not in app.full_df.columns:
+                raise ValueError(f"Column '{col_name}' (mapped as {key}) not found in data file. Available columns: {', '.join(app.full_df.columns[:10])}")
+
         start = parse_station(params['start'])
         end = parse_station(params['end'])
-        data = app.full_df[(app.full_df[col_map['station']] >= min(start, end)) & 
-                           (app.full_df[col_map['station']] <= max(start, end))].copy()
-        
+
+        # Parse station column to numeric before filtering to avoid lexicographic comparison on strings
+        station_col = col_map['station']
+        df = app.full_df.copy()
+        df['_parsed_sta'] = df[station_col].apply(lambda v: parse_station(v))
+        data = df[(df['_parsed_sta'] >= min(start, end)) &
+                  (df['_parsed_sta'] <= max(start, end))].copy()
+        data.drop(columns=['_parsed_sta'], inplace=True)
+
         if data.empty:
             raise ValueError("No data found for the specified start/end stations. Check mappings or range.")
-        
-        data['Station'] = pd.to_numeric(data[col_map['station']], errors='coerce')
+
+        data['Station'] = pd.to_numeric(data[station_col].apply(lambda v: parse_station(v)), errors='coerce')
         data['Elevation'] = pd.to_numeric(data[col_map['elev']], errors='coerce')
         data['WT'] = pd.to_numeric(data[col_map['wt']], errors='coerce')
         data = data.dropna(subset=['Station', 'Elevation', 'WT'])
+
+        # Drop duplicate stations (keeps first occurrence) to prevent merge cartesian products
+        data = data.drop_duplicates(subset=['Station'], keep='first')
+
+        # Validate wall thickness > 0 (wt=0 produces meaningless SMYS_Limit=0)
+        if (data['WT'] <= 0).any():
+            raise ValueError("Wall thickness must be greater than zero at all stations.")
+
         self.points = data
         self.length = abs(end - start)
-        
-        # SMYS Threshold input 
-        app.test_percent = float(params.get('smys_threshold', 104)) / 100  # Handle as %
-        min_test_req = float(params['min_p'])
+
+        if start == end:
+            raise ValueError("Start and end stations are the same — cannot define a test section.")
+
+        # SMYS Threshold input — use local variable to avoid mutating shared app object
+        smys_threshold = float(params.get('smys_threshold', 104))
+        if smys_threshold <= 0:
+            raise ValueError("SMYS threshold must be greater than zero.")
+        test_percent = smys_threshold / 100
+        self.test_percent = test_percent
+        self.min_test_req = float(params['min_p'])
+        min_test_req = self.min_test_req
         test_site = parse_station(params['test_site'])
         
         # Testing window
@@ -383,7 +419,7 @@ class Section:
         self.points['Local_P'] = self.target_gauge + (test_elev - self.points['Elevation']) * app.head_factor
         self.points['Lower_Bound_P'] = self.gauge_lower + (test_elev - self.points['Elevation']) * app.head_factor
         self.points['Upper_Bound_P'] = self.gauge_upper + (test_elev - self.points['Elevation']) * app.head_factor
-        self.points['SMYS_Limit'] = app.test_percent * (2 * app.smys * self.points['WT'] / app.od)
+        self.points['SMYS_Limit'] = test_percent * (2 * app.smys * self.points['WT'] / app.od)
 
         # Flag stations where the lower test bound falls below the minimum test pressure
         below_mask = self.points['Lower_Bound_P'] < min_test_req
@@ -407,6 +443,11 @@ class Section:
         if override_vent is not None:
             self.vent_psi = override_vent
         
+        # Validate inside diameter is positive (OD - 2*WT)
+        max_wt = self.points['WT'].max()
+        if app.od - 2 * max_wt <= 0:
+            raise ValueError(f"Pipe inside diameter is zero or negative (OD={app.od}, max WT={max_wt}). Check your OD and wall thickness values.")
+
         # Calculate cumulative volumes for filled part
         cum_vol = [0.0]
         for i in range(len(df_sorted) - 1):
@@ -421,16 +462,17 @@ class Section:
         
         df_sorted['Cum_Gal'] = cum_vol
         
+        atm = 14.7
+        v_rem = total_vol - np.array(cum_vol)
+        v_rem[v_rem == 0] = 1e-6
+
         if total_vol == 0:
             self.prepack_psi = 0
             prepack_profile = [0.0] * len(df_sorted)
             self.cum_gal_at_vent = 0.0
             df_sorted['Prepack_Profile'] = prepack_profile
         else:
-            atm = 14.7
             req_abs = req_back_p + atm
-            v_rem = total_vol - np.array(cum_vol)
-            v_rem[v_rem == 0] = 1e-6
             min_prepack_abs = np.max(req_abs * v_rem / total_vol)
             self.prepack_psi = min_prepack_abs - atm
             prepack_abs = self.prepack_psi + atm

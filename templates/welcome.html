@@ -146,7 +146,7 @@
                         <td>
                             <div class="action-btns">
                                 <a href="/load/{{ s.id }}" class="btn btn-green btn-sm">Open</a>
-                                <form method="POST" action="/delete/{{ s.id }}" onsubmit="return confirm('Delete \'{{ s.name }}\'?')">
+                                <form method="POST" action="/delete/{{ s.id }}" onsubmit="return confirm('Delete ' + {{ s.name|tojson }} + '?')">
                                     <button type="submit" class="btn btn-red btn-sm">Delete</button>
                                 </form>
                             </div>

@@ -59,7 +59,7 @@
         {% for company in companies %}
         <li>
             <span>{{ company }}</span>
-            <form method="POST" action="/settings/company/delete" onsubmit="return confirm('Remove \'{{ company }}\' from the list?')">
+            <form method="POST" action="/settings/company/delete" onsubmit="return confirm('Remove ' + {{ company|tojson }} + ' from the list?')">
                 <input type="hidden" name="name" value="{{ company }}">
                 <button type="submit" class="btn-red" title="Remove">&#x2715;</button>
             </form>
@@ -96,7 +96,7 @@
                     <span>{{ pf.name }}</span>
                     <div style="display:flex; gap:4px;">
                         <button type="button" class="btn-edit" onclick="toggleEdit('{{ pf.id }}')">&#9998; Edit</button>
-                        <form method="POST" action="/portfolio/delete/{{ pf.id }}?next=settings" onsubmit="return confirm('Delete portfolio \'{{ pf.name }}\'? Analyses will become uncategorized.')">
+                        <form method="POST" action="/portfolio/delete/{{ pf.id }}?next=settings" onsubmit="return confirm('Delete portfolio ' + {{ pf.name|tojson }} + '? Analyses will become uncategorized.')">
                             <button type="submit" class="btn-red" title="Delete">&#x2715;</button>
                         </form>
                     </div>
