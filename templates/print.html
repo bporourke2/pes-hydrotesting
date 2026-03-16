@@ -72,12 +72,13 @@
             <li>Min Test Pressure (psig): {{ p.min_p }}</li>
             <li>Test Site Station: {{ p.test_site|station_format }}</li>
             <li>Dewater Site Station: {{ p.dewater_site|station_format }}</li>
-            <li>Test Window Lower Buffer: {{ p.min_excess or 25 }}</li>
-            <li>Test Window Size: {{ p.window_upper or 50 }}</li>
-            <li>Override Pre-pack psig: {{ p.override_prepack or 'None' }}</li>
-            <li>Override Vent Threshold psig: {{ p.override_vent or 'None' }}</li>
+            <li>Test Window Lower Buffer: {{ p.get('min_excess') if p.get('min_excess') is not none else 25 }}</li>
+            <li>Test Window Size: {{ p.get('window_upper') if p.get('window_upper') is not none else 50 }}</li>
+            <li>Override Pre-pack psig: {{ 'None' if p.get('override_prepack') is none else p.override_prepack }}</li>
+            <li>Override Vent Threshold psig: {{ 'None' if p.get('override_vent') is none else p.override_vent }}</li>
             <li>Pipe Grade: {{ p.grade }}</li>
-            <li>SMYS Threshold (%): {{ p.smys_threshold|int or 104 }}</li>
+            <li>SMYS Threshold (%): {{ p.get('smys_threshold')|int if p.get('smys_threshold') is not none else 104 }}</li>
+            <li>Head Factor: {{ p.get('head_factor') if p.get('head_factor') is not none else 0.433 }} psi/ft</li>
             <li>Fill Direction: {{ 'From Start' if p.fill_direction == '1' else 'From End' }}</li>
         </ul>
         
@@ -87,7 +88,7 @@
             <div class="card"><h4>Vent Threshold</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
             <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
             <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
-            <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft</p></div>
+            <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft{% if sec.length > 5280 %} ({{ "{:,.2f}".format(sec.length / 5280) }} mi){% endif %}</p></div>
             <div class="card" style="{% if max_smys_pct > p.smys_threshold %}border-top: 3px solid #e74c3c;{% endif %}">
                 <h4>Max % SMYS{% if max_smys_pct > p.smys_threshold %} — EXCEEDS LIMIT{% endif %}</h4>
                 <p style="{% if max_smys_pct > p.smys_threshold %}color: #e74c3c;{% endif %}">{{ max_smys_pct|round(1) }}% at {{ max_smys_station|station_format }}</p>

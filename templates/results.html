@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Hydrotest Engineering Analysis</title>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" crossorigin="anonymous"></script>
     <style>
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #f4f7f6; }
@@ -50,8 +50,13 @@
                 let sign = val < 0 ? '-' : '';
                 let absVal = Math.abs(val);
                 let sta = Math.floor(absVal / 100);
-                let rem = Math.round(absVal % 100);
-                input.value = sign + sta + '+' + (rem < 10 ? '0' + rem : rem);
+                let rem = absVal % 100;
+                if (rem === Math.floor(rem)) {
+                    let r = Math.round(rem);
+                    input.value = sign + sta + '+' + (r < 10 ? '0' + r : r);
+                } else {
+                    input.value = sign + sta + '+' + rem.toFixed(2).padStart(5, '0');
+                }
             }
         }
     </script>
@@ -69,17 +74,17 @@
                 <div class="sidebar-grid">
                     <label>Start Station</label><input name="start" value="{{ p.start|station_format }}" onblur="formatStation(this)">
                     <label>End Station</label><input name="end" value="{{ p.end|station_format }}" onblur="formatStation(this)">
-                    <label>Fill GPM</label><input type="number" name="fill_gpm" value="{{ p.fill_gpm }}">
-                    <label>Dewater GPM</label><input type="number" name="dewater_gpm" value="{{ p.dewater_gpm }}">
-                    <label>Pre-pack CFM</label><input type="number" name="cfm" value="{{ p.cfm }}">
-                    <label>OD (inches)</label><input type="number" name="od" value="{{ p.od }}">
-                    <label>Min Test Pressure (psig)</label><input type="number" name="min_p" value="{{ p.min_p }}">
+                    <label>Fill GPM</label><input type="number" name="fill_gpm" value="{{ p.fill_gpm }}" min="0">
+                    <label>Dewater GPM</label><input type="number" name="dewater_gpm" value="{{ p.dewater_gpm }}" min="0">
+                    <label>Pre-pack CFM</label><input type="number" name="cfm" value="{{ p.cfm }}" min="0">
+                    <label>OD (inches)</label><input type="number" name="od" value="{{ p.od }}" min="0.001">
+                    <label>Min Test Pressure (psig)</label><input type="number" name="min_p" value="{{ p.min_p }}" min="0">
                     <label>Test Site Station</label><input name="test_site" value="{{ p.test_site|station_format }}" onblur="formatStation(this)">
                     <label>Dewater Site Station</label><input name="dewater_site" value="{{ p.dewater_site|station_format }}" onblur="formatStation(this)">
-                    <label>Test Window Lower Buffer</label><input type="number" name="min_excess" value="{{ p.get('min_excess') if p.get('min_excess') is not none else 25 }}">
-                    <label>Test Window Size</label><input type="number" name="window_upper" value="{{ p.get('window_upper') if p.get('window_upper') is not none else 50 }}">
-                    <label>Override Pre-pack psig</label><input type="number" name="override_prepack" value="{{ p.override_prepack or '' }}" placeholder="None">
-                    <label>Override Vent Threshold psig</label><input type="number" name="override_vent" value="{{ p.override_vent or '' }}" placeholder="None">
+                    <label>Test Window Lower Buffer</label><input type="number" name="min_excess" value="{{ p.get('min_excess') if p.get('min_excess') is not none else 25 }}" min="0">
+                    <label>Test Window Size</label><input type="number" name="window_upper" value="{{ p.get('window_upper') if p.get('window_upper') is not none else 50 }}" min="0">
+                    <label>Override Pre-pack psig</label><input type="number" name="override_prepack" value="{{ '' if p.get('override_prepack') is none else p.override_prepack }}" placeholder="None">
+                    <label>Override Vent Threshold psig</label><input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None">
                     <label>Pipe Grade</label><select name="grade">
                         <option value="B" {% if p.grade == 'B' %}selected{% endif %}>B (SMYS 35000)</option>
                         <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42000)</option>
@@ -94,6 +99,8 @@
                         <option value="1" {% if p.fill_direction == '1' %}selected{% endif %}>From Start</option>
                         <option value="2" {% if p.fill_direction == '2' %}selected{% endif %}>From End</option>
                     </select>
+                    <label>Head Factor (psi/ft) <span style="font-size:0.8em; color:#95a5a6;">— 0.433 freshwater, 0.445 saltwater</span></label>
+                    <input type="number" name="head_factor" value="{{ p.get('head_factor') if p.get('head_factor') is not none else 0.433 }}" step="0.001" min="0.001">
                     <label>Unrestrained Footage (ft) <span style="font-size:0.8em; color:#95a5a6;">— above ground / expansion joints</span></label>
                     <input type="number" name="unrestrained_length" value="{{ p.get('unrestrained_length') or '' }}" placeholder="0 (all restrained)" min="0" step="1">
                 </div>
@@ -259,7 +266,7 @@
             <div class="card"><h4>Vent Threshold{% if p.get('override_vent') is not none %} (overridden){% endif %}</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
             <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
             <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
-            <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft</p></div>
+            <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft{% if sec.length > 5280 %} ({{ "{:,.2f}".format(sec.length / 5280) }} mi){% endif %}</p></div>
             <div class="card" style="{% if max_smys_pct > p.smys_threshold %}border-top-color: #e74c3c;{% endif %}">
                 <h4>Max % SMYS{% if max_smys_pct > p.smys_threshold %} — EXCEEDS LIMIT{% endif %}</h4>
                 <p style="{% if max_smys_pct > p.smys_threshold %}color: #e74c3c;{% endif %}">{{ max_smys_pct|round(1) }}% at {{ max_smys_station|station_format }}</p>

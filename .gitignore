@@ -30,6 +30,10 @@ saves/
 # Local reference documents (not for repo)
 ref/
 
+# IDE / AI tooling
+.claude/
+.vscode/
+
 # Misc
 .DS_Store
 Thumbs.db

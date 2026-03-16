@@ -5,6 +5,7 @@ from werkzeug.utils import secure_filename
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from functools import wraps
+from collections import OrderedDict
 import logging
 import math
 import json
@@ -31,27 +32,40 @@ def log_action(action, detail=''):
 
 load_dotenv()
 
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 Compress(app)
 
-# Survey DataFrame cache: {(file_path, mtime): DataFrame}
-_df_cache = {}
+# Survey DataFrame cache: LRU with max 20 entries
+_df_cache = OrderedDict()
 _df_cache_lock = threading.Lock()
 
-def get_cached_df(file_path):
+def get_cached_df(file_path, sheet=0):
     try:
         mtime = os.path.getmtime(file_path)
     except OSError:
         return None
-    key = (file_path, mtime)
+    key = (file_path, mtime, sheet)
     with _df_cache_lock:
-        if key not in _df_cache:
-            if len(_df_cache) > 20:
-                _df_cache.clear()
-            import pandas as pd
-            _df_cache[key] = pd.read_excel(file_path, sheet_name=0)
-        return _df_cache[key]
+        if key in _df_cache:
+            _df_cache.move_to_end(key)
+            return _df_cache[key]
+        import pandas as pd
+        df = pd.read_excel(file_path, sheet_name=sheet)
+        _df_cache[key] = df
+        while len(_df_cache) > 20:
+            _df_cache.popitem(last=False)
+        return df
+
+def get_sheet_names(file_path):
+    """Return list of sheet names from an Excel file."""
+    import openpyxl
+    wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+    names = wb.sheetnames
+    wb.close()
+    return names
 
 # --- Security helpers ---
 _SAVE_ID_RE = re.compile(r'^[a-f0-9]{8}$')
@@ -60,6 +74,13 @@ def validate_save_id(save_id):
     """Reject path traversal: only allow 8-char hex IDs."""
     if not _SAVE_ID_RE.match(save_id):
         abort(400, 'Invalid save ID')
+
+def check_save_owner(data):
+    """Verify current user owns this save. Returns True if OK, aborts 403 if not."""
+    owner_sub = data.get('owner_sub')
+    if owner_sub and owner_sub != session.get('user', {}).get('sub'):
+        abort(403, 'You do not have permission to access this analysis.')
+    return True
 
 def safe_write_json(filepath, data):
     """Atomic JSON write via temp file + rename."""
@@ -76,7 +97,7 @@ def safe_write_json(filepath, data):
 def validate_file_path(file_path):
     """Ensure file_path is inside the project directory."""
     resolved = os.path.realpath(file_path)
-    base = os.path.realpath(os.getcwd())
+    base = os.path.realpath(_APP_DIR)
     if not resolved.startswith(base + os.sep) and resolved != base:
         return False
     return True
@@ -84,15 +105,31 @@ def validate_file_path(file_path):
 # C2 — No fallback secret key
 secret = os.environ.get('SECRET_KEY')
 if not secret:
+    if os.environ.get('FLASK_ENV') == 'production' or not app.debug:
+        raise RuntimeError("SECRET_KEY must be set in production. Sessions will not survive restarts without it.")
     import secrets as _secrets
     secret = _secrets.token_hex(32)
     logging.warning("SECRET_KEY not set — generated ephemeral key. Sessions will not survive restarts.")
 app.secret_key = secret
 
+# Upload size limit (50 MB)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
 # Session cookie hardening
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() == 'true'
+
+# CSRF defense-in-depth: verify Origin header on state-changing requests
+@app.before_request
+def csrf_origin_check():
+    if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        return
+    origin = request.headers.get('Origin')
+    if origin:
+        expected = request.host_url.rstrip('/')
+        if origin != expected:
+            abort(403)
 
 # --- Authentik OIDC ---
 _client_id     = os.environ.get('AUTHENTIK_CLIENT_ID')
@@ -145,8 +182,9 @@ def logout():
 
 app.jinja_env.filters['station_format'] = station_format
 
-SAVES_DIR = 'saves'
-UPLOADS_DIR = 'uploads'
+SAVES_DIR = os.path.join(_APP_DIR, 'saves')
+UPLOADS_DIR = os.path.join(_APP_DIR, 'uploads')
+DEMO_FILE = os.path.join(_APP_DIR, 'data', 'Testdata.xlsx')
 os.makedirs(SAVES_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
@@ -220,6 +258,9 @@ def load_all_saves():
 @login_required
 def welcome():
     saves = load_all_saves()
+    # Filter saves to only those owned by the current user (or with no owner for legacy saves)
+    user_sub = session.get('user', {}).get('sub')
+    saves = [s for s in saves if not s.get('owner_sub') or s['owner_sub'] == user_sub]
     portfolios = load_portfolios()
     pf_map = {pf['id']: pf['name'] for pf in portfolios}
 
@@ -260,12 +301,13 @@ def portfolio_create():
     name = request.form.get('name', '').strip()
     if name:
         portfolios = load_portfolios()
-        portfolios.append({
-            'id': str(uuid.uuid4())[:8],
-            'name': name,
-            'company': request.form.get('company', '').strip() or None,
-        })
-        save_portfolios(portfolios)
+        if not any(pf['name'].lower() == name.lower() for pf in portfolios):
+            portfolios.append({
+                'id': str(uuid.uuid4())[:8],
+                'name': name,
+                'company': request.form.get('company', '').strip() or None,
+            })
+            save_portfolios(portfolios)
     next_page = request.form.get('next', 'welcome')
     if next_page not in ('welcome', 'settings'):
         next_page = 'welcome'
@@ -274,6 +316,7 @@ def portfolio_create():
 @app.route('/portfolio/edit/<portfolio_id>', methods=['POST'])
 @login_required
 def portfolio_edit(portfolio_id):
+    validate_save_id(portfolio_id)
     portfolios = load_portfolios()
     for pf in portfolios:
         if pf['id'] == portfolio_id:
@@ -286,14 +329,22 @@ def portfolio_edit(portfolio_id):
 @app.route('/portfolio/delete/<portfolio_id>', methods=['POST'])
 @login_required
 def portfolio_delete(portfolio_id):
+    validate_save_id(portfolio_id)
     portfolios = load_portfolios()
     portfolios = [p for p in portfolios if p['id'] != portfolio_id]
     save_portfolios(portfolios)
     # Unassign any saves that belonged to this portfolio
-    for save in load_all_saves():
-        if save.get('portfolio_id') == portfolio_id:
-            save['portfolio_id'] = None
-            safe_write_json(os.path.join(SAVES_DIR, f"{save['id']}.json"), save)
+    for fname in os.listdir(SAVES_DIR):
+        if fname.endswith('.json') and not fname.startswith('_'):
+            fpath = os.path.join(SAVES_DIR, fname)
+            try:
+                with open(fpath) as f:
+                    save = json.load(f)
+                if save.get('portfolio_id') == portfolio_id:
+                    save['portfolio_id'] = None
+                    safe_write_json(fpath, save)
+            except Exception:
+                pass
     next_page = request.args.get('next', 'welcome')
     if next_page not in ('welcome', 'settings'):
         next_page = 'welcome'
@@ -404,7 +455,7 @@ def set_demo():
         'test_site': 1218848, 'dewater_site': 1218848, 'smys_threshold': 104, 'fill_direction': '1',
         'min_excess': 25, 'window_upper': 50, 'grade': 'X70'
     }
-    session['file_path'] = 'data/Testdata.xlsx'
+    session['file_path'] = DEMO_FILE
     session['project_info'] = {
         'governing_code': '49 CFR Part 192', 'owner_company': 'Demo Company',
         'portfolio_id': None, 'testing_contractor': 'PES',
@@ -412,6 +463,7 @@ def set_demo():
         'contractor_rep': {'name': '', 'phone': '', 'email': ''},
     }
     session.pop('save_id', None)
+    session.pop('col_map', None)
     return redirect(url_for('mapping'))
 
 @app.route('/mapping', methods=['GET', 'POST'])
@@ -438,24 +490,33 @@ def mapping():
 
         if col_station and col_elev and col_wt:
             session.pop('save_id', None)
+            selected_sheet = request.form.get('sheet_name', '0')
+            try:
+                selected_sheet = int(selected_sheet)
+            except (ValueError, TypeError):
+                pass  # keep as string sheet name
             session['col_map'] = {
                 'station': col_station,
                 'elev': col_elev,
-                'wt': col_wt
+                'wt': col_wt,
+                'sheet': selected_sheet,
             }
 
             # Pre-populate params based on data after column mapping
-            file_path = session.get('file_path', 'data/Testdata.xlsx')
+            file_path = session.get('file_path', DEMO_FILE)
             try:
-                logic = PipelineApp(file_path)
+                logic = PipelineApp(file_path, sheet_name=selected_sheet)
             except Exception as e:
                 return render_template('mapping.html', p=session.get('params', {}),
                                        preview=None, columns=[],
                                        upload_error=f"Could not read file: {e}")
             data = logic.full_df
             col_sta = session['col_map']['station']
-            min_sta = parse_station(data[col_sta].min())
-            max_sta = parse_station(data[col_sta].max())
+            # Parse station column to numeric before finding min/max
+            # (handles string stations like "1200+50" that would sort lexicographically)
+            parsed_stations = data[col_sta].apply(lambda v: parse_station(v))
+            min_sta = float(parsed_stations.min())
+            max_sta = float(parsed_stations.max())
 
             p = session.get('params', {})
 
@@ -504,9 +565,14 @@ def mapping():
 
             return redirect(url_for('results'))
 
-    file_path = session.get('file_path', 'data/Testdata.xlsx')
+    file_path = session.get('file_path', DEMO_FILE)
+    current_sheet = session.get('col_map', {}).get('sheet', 0)
     try:
-        logic = PipelineApp(file_path)
+        sheet_names = get_sheet_names(file_path)
+    except Exception:
+        sheet_names = []
+    try:
+        logic = PipelineApp(file_path, sheet_name=current_sheet)
         preview_html, columns = logic.get_preview()
     except Exception as e:
         preview_html, columns = None, []
@@ -514,8 +580,69 @@ def mapping():
     else:
         upload_error = None
 
+    # Auto-guess columns only if user hasn't already mapped them
+    col_map = session.get('col_map', {})
+    if columns and not col_map.get('station'):
+        guesses = guess_columns(columns)
+    else:
+        guesses = {}
+
     p = session.get('params', {})
-    return render_template('mapping.html', p=p, preview=preview_html, columns=columns, upload_error=upload_error)
+    return render_template('mapping.html', p=p, preview=preview_html, columns=columns,
+                           upload_error=upload_error, sheet_names=sheet_names,
+                           current_sheet=current_sheet, guesses=guesses)
+
+def guess_columns(columns):
+    """Return best-guess column names for station, elevation, wall thickness."""
+    lower = [c.lower() for c in columns]
+    guesses = {'station': None, 'elev': None, 'wt': None}
+
+    # Station: prefer "station" in name, fall back to "sta"
+    for priority in [['station'], ['sta']]:
+        for i, lc in enumerate(lower):
+            if any(kw in lc for kw in priority):
+                guesses['station'] = columns[i]
+                break
+        if guesses['station']:
+            break
+
+    # Elevation: prefer exact "elevation", then "elev"
+    for priority in [['elevation'], ['elev']]:
+        for i, lc in enumerate(lower):
+            if any(kw in lc for kw in priority):
+                guesses['elev'] = columns[i]
+                break
+        if guesses['elev']:
+            break
+
+    # Wall thickness: prefer "wall thick", then "wt", then "thickness"
+    for priority in [['wall thick'], ['wall_thick'], ['wt'], ['thickness']]:
+        for i, lc in enumerate(lower):
+            if any(kw in lc for kw in priority):
+                guesses['wt'] = columns[i]
+                break
+        if guesses['wt']:
+            break
+
+    return guesses
+
+@app.route('/mapping/sheet_preview')
+@login_required
+def sheet_preview():
+    """AJAX endpoint: return preview HTML + column list for a given sheet."""
+    file_path = session.get('file_path', DEMO_FILE)
+    sheet = request.args.get('sheet', '0')
+    try:
+        sheet = int(sheet)
+    except (ValueError, TypeError):
+        pass
+    try:
+        logic = PipelineApp(file_path, sheet_name=sheet)
+        preview_html, columns = logic.get_preview()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    guesses = guess_columns(columns)
+    return jsonify({'preview': preview_html, 'columns': columns, 'guesses': guesses})
 
 @app.route('/results', methods=['GET', 'POST'])
 @login_required
@@ -538,7 +665,7 @@ def results():
                     form_dict[key] = p.get(key)  # Fallback to session
 
         # Handle numeric fields to convert strings to floats, fallback if invalid or empty
-        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length']
+        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length', 'head_factor']
         for key in numeric_keys:
             if key in form_dict:
                 value = form_dict[key].strip() if form_dict[key] else ''
@@ -553,21 +680,34 @@ def results():
                     else:
                         form_dict[key] = p.get(key)  # Keep previous if empty for non-overrides
 
+        # Reject negative values for fields that must be non-negative
+        for key in ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'smys_threshold', 'min_excess', 'window_upper', 'head_factor']:
+            val = form_dict.get(key)
+            if val is not None and isinstance(val, (int, float)) and val < 0:
+                form_dict[key] = p.get(key)
+
         # Auto-set fill_site based on direction (overrides pre-populated value)
         if 'fill_direction' in form_dict:
-            if form_dict['fill_direction'] == '1':
-                form_dict['fill_site'] = form_dict.get('start', p.get('start'))
+            s = form_dict.get('start', p.get('start'))
+            e = form_dict.get('end', p.get('end'))
+            if s is not None and e is not None:
+                if form_dict['fill_direction'] == '1':
+                    form_dict['fill_site'] = min(s, e)
+                else:
+                    form_dict['fill_site'] = max(s, e)
+            elif form_dict['fill_direction'] == '1':
+                form_dict['fill_site'] = s
             else:
-                form_dict['fill_site'] = form_dict.get('end', p.get('end'))
+                form_dict['fill_site'] = e
         p.update(form_dict)
         session['params'] = p
 
     # Always ensure fill_site is set (for GET or if missing after POST)
     if 'fill_site' not in p and 'fill_direction' in p and 'start' in p and 'end' in p:
         if p['fill_direction'] == '1':
-            p['fill_site'] = p['start']
+            p['fill_site'] = min(p['start'], p['end'])
         else:
-            p['fill_site'] = p['end']
+            p['fill_site'] = max(p['start'], p['end'])
         session['params'] = p  # Persist the update
 
     # Validate required params before calculation
@@ -577,12 +717,14 @@ def results():
         return redirect(url_for('mapping'))
 
     try:
-        file_path = session.get('file_path', 'data/Testdata.xlsx')
+        file_path = session.get('file_path', DEMO_FILE)
         grade = p.get('grade', 'X70')
         if grade not in grade_smys:
             raise ValueError(f"Unknown pipe grade '{grade}'. Valid grades: {', '.join(grade_smys.keys())}")
         smys = grade_smys[grade]
-        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, _df=get_cached_df(file_path))
+        head_factor = float(p.get('head_factor', 0.433))
+        sheet = col_map.get('sheet', 0) if col_map else 0
+        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, col_map)
 
         # Moved prepack_time calc here
@@ -644,7 +786,7 @@ def results():
         return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
     except ValueError as ve:
         from markupsafe import escape
-        return f"Input Error: {escape(str(ve))} (Check station formats or numeric values)"
+        return f"Input Error: {escape(str(ve))} (Check station formats or numeric values)", 400
     except Exception as e:
         app.logger.exception("Calculation error")
         return "A calculation error occurred. Check your inputs and try again.", 500
@@ -672,7 +814,7 @@ def save_analysis():
     overwrite_id = request.form.get('overwrite_id', '').strip()
     if overwrite_id and not _SAVE_ID_RE.match(overwrite_id):
         return redirect(url_for('results', save_error='1'))
-    file_path = session.get('file_path', 'data/Testdata.xlsx')
+    file_path = session.get('file_path', DEMO_FILE)
 
     if overwrite_id:
         # Overwrite existing save — keep same id and data file path, push old state to history
@@ -693,10 +835,12 @@ def save_analysis():
                 'timestamp': old.get('timestamp'),
                 'notes': old.get('notes', ''),
                 'params': old.get('params', {}),
+                'col_map': old.get('col_map'),
+                'project_info': old.get('project_info'),
             })
 
         saved_file = existing_data_file or file_path
-        if file_path and file_path not in ('data/Testdata.xlsx',) and os.path.exists(file_path):
+        if file_path and file_path != DEMO_FILE and os.path.exists(file_path):
             if not existing_data_file or not os.path.exists(existing_data_file):
                 saved_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
                 shutil.copy(file_path, saved_file)
@@ -706,7 +850,7 @@ def save_analysis():
     else:
         save_id = str(uuid.uuid4())[:8]
         saved_file = file_path
-        if file_path and file_path not in ('data/Testdata.xlsx',) and os.path.exists(file_path):
+        if file_path and file_path != DEMO_FILE and os.path.exists(file_path):
             saved_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
             shutil.copy(file_path, saved_file)
         new_version = 1
@@ -732,6 +876,7 @@ def save_analysis():
         'col_map': col_map,
         'file_path': saved_file,
         'history': history,
+        'owner_sub': session.get('user', {}).get('sub'),
     }
 
     safe_write_json(os.path.join(SAVES_DIR, f'{save_id}.json'), save_data)
@@ -750,6 +895,7 @@ def load_save(save_id):
         return "Save not found.", 404
     with open(save_file) as f:
         data = json.load(f)
+    check_save_owner(data)
     log_action('LOAD', f'id={save_id} name="{data.get("name", "")}"')
     if 'params' not in data or 'col_map' not in data or 'file_path' not in data:
         return "Save file is incomplete or corrupted.", 400
@@ -777,13 +923,16 @@ def load_version(save_id, version_num):
         return "Version not found.", 404
     if 'col_map' not in data or 'file_path' not in data:
         return "Save file is incomplete or corrupted.", 400
+    if not validate_file_path(data['file_path']):
+        return "Save references an invalid file path.", 400
+    check_save_owner(data)
     log_action('LOAD_VERSION', f'id={save_id} name="{data.get("name", "")}" v{version_num}')
     # Load historical params but keep the current save's col_map and file_path
-    session['params'] = entry['params']
-    session['col_map'] = data['col_map']
+    session['params'] = entry.get('params', {})
+    session['col_map'] = entry.get('col_map') or data['col_map']
     session['file_path'] = data['file_path']
     session['save_id'] = save_id
-    session['project_info'] = data.get('project_info', {})
+    session['project_info'] = entry.get('project_info') or data.get('project_info', {})
     return redirect(url_for('results', restored_version=version_num))
 
 @app.route('/delete/<save_id>', methods=['POST'])
@@ -795,12 +944,17 @@ def delete_save(save_id):
     name = ''
     if os.path.exists(save_file):
         with open(save_file) as f:
-            name = json.load(f).get('name', '')
+            data = json.load(f)
+        check_save_owner(data)
+        name = data.get('name', '')
         os.remove(save_file)
     if os.path.exists(data_file):
         os.remove(data_file)
     log_action('DELETE', f'id={save_id} name="{name}"')
-    return redirect(request.referrer or url_for('welcome'))
+    referrer = request.referrer
+    if referrer and referrer.startswith(request.host_url):
+        return redirect(referrer)
+    return redirect(url_for('welcome'))
 
 @app.route('/print')
 @login_required
@@ -818,10 +972,14 @@ def print_view():
         return "No data available for printing."
 
     try:
-        file_path = session.get('file_path', 'data/Testdata.xlsx')
+        file_path = session.get('file_path', DEMO_FILE)
         grade = p.get('grade', 'X70')
-        smys = grade_smys.get(grade, 70000)
-        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, _df=get_cached_df(file_path))
+        if grade not in grade_smys:
+            raise ValueError(f"Unknown pipe grade '{grade}'. Valid grades: {', '.join(grade_smys.keys())}")
+        smys = grade_smys[grade]
+        head_factor = float(p.get('head_factor', 0.433))
+        sheet = col_map.get('sheet', 0) if col_map else 0
+        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, col_map)
 
         atm = 14.7
@@ -859,15 +1017,19 @@ def pv_plot(save_id):
         return "Save not found.", 404
     with open(save_file) as f:
         data = json.load(f)
+    check_save_owner(data)
     p = data.get('params', {})
     total_volume_gal = None
     avg_wt = None
     min_wt = None
     try:
-        file_path = data.get('file_path', 'data/Testdata.xlsx')
+        file_path = data.get('file_path', DEMO_FILE)
+        pv_col_map = data.get('col_map', {})
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
-        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, _df=get_cached_df(file_path))
-        sec = Section(app_logic, p, data.get('col_map', {}))
+        head_factor = float(p.get('head_factor', 0.433))
+        sheet = pv_col_map.get('sheet', 0)
+        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
+        sec = Section(app_logic, p, pv_col_map)
         total_volume_gal = round(sec.volume_gal, 1)
         # Length-weighted average wall thickness (same weighting as volume calc)
         pts = sec.points.sort_values('Station').reset_index(drop=True)
@@ -922,6 +1084,7 @@ def pv_save(save_id):
         return jsonify({'error': 'Save not found'}), 404
     with open(save_file) as f:
         data = json.load(f)
+    check_save_owner(data)
     payload = request.get_json()
     if payload is None:
         return jsonify({'error': 'Invalid or missing JSON body'}), 400

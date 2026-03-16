@@ -12,7 +12,9 @@ def parse_station(st):
     st = str(st).replace(',', '')  # Handle commas
     if '+' in st:
         parts = st.split('+')
-        sign = -1 if float(parts[0]) < 0 else 1
+        if len(parts) != 2:
+            raise ValueError(f"Invalid station format '{st}' — expected format like '1200+50'")
+        sign = -1 if (float(parts[0]) < 0 or parts[0].lstrip().startswith('-')) else 1
         return float(parts[0]) * 100 + sign * float(parts[1])
     else:
         return float(st)
@@ -22,17 +24,20 @@ def station_format(x):
     sign = '-' if x < 0 else ''
     x = abs(x)
     sta = int(x // 100)
-    rem = int(x % 100)
-    return f"{sign}{sta}+{rem:02d}"
+    rem = x % 100
+    if rem == int(rem):
+        return f"{sign}{sta}+{int(rem):02d}"
+    else:
+        return f"{sign}{sta}+{rem:05.2f}"
 
 class PipelineApp:
-    def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04, head_factor=0.433, _df=None):
+    def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04, head_factor=0.433, _df=None, sheet_name=0):
         self.od = od
         self.smys = smys
         self.test_percent = test_percent
         self.head_factor = head_factor
         self.survey_file = survey_file
-        self.full_df = _df if _df is not None else pd.read_excel(survey_file, sheet_name=0)
+        self.full_df = _df if _df is not None else pd.read_excel(survey_file, sheet_name=sheet_name)
 
     def get_preview(self):
         from markupsafe import escape
@@ -66,9 +71,9 @@ class PipelineApp:
             fig.add_trace(go.Scatter(x=df['Station'][exceed_mask], y=df['Upper_Bound_P'][exceed_mask], fill=None, mode='lines', line=dict(color='red', width=0), showlegend=False, yaxis='y2'))
             fig.add_trace(go.Scatter(x=df['Station'][exceed_mask], y=df['SMYS_Limit'][exceed_mask], fill='tonexty', mode='lines', fillcolor='rgba(255,0,0,0.3)', line=dict(color='red', width=0), name='Test Window Exceeds SMYS', yaxis='y2'))
 
-            # Fill below min test (red shaded)
-            below_mask = df['Local_P'] < min_test
-            fig.add_trace(go.Scatter(x=df['Station'][below_mask], y=df['Local_P'][below_mask], fill=None, mode='lines', line=dict(color='red', width=0), showlegend=False, yaxis='y2'))
+            # Fill below min test (red shaded) — use Lower_Bound_P to match violation detection
+            below_mask = df['Lower_Bound_P'] < min_test
+            fig.add_trace(go.Scatter(x=df['Station'][below_mask], y=df['Lower_Bound_P'][below_mask], fill=None, mode='lines', line=dict(color='red', width=0), showlegend=False, yaxis='y2'))
             fig.add_trace(go.Scatter(x=df['Station'][below_mask], y=[min_test] * len(df['Station'][below_mask]), fill='tonexty', mode='lines', fillcolor='rgba(255,0,0,0.3)', line=dict(color='red', width=0), name='Below Min Test', yaxis='y2'))
 
             if min_test is not None:
@@ -91,8 +96,12 @@ class PipelineApp:
                 margin=dict(l=50, r=50, t=50, b=50)
             )
 
-            tickvals = list(range(int(df['Station'].min()), int(df['Station'].max()) + 1, 1000))
-            ticktext = [f"{int(val // 100)}+{int(val % 100):02d}" for val in tickvals]
+            sta_min = df['Station'].min()
+            sta_max = df['Station'].max()
+            step = 1000
+            tickvals = list(range(int(sta_min // step) * step, int(sta_max) + step, step))
+            tickvals = [t for t in tickvals if sta_min <= t <= sta_max]
+            ticktext = [station_format(t) for t in tickvals]
             fig.update_xaxes(tickvals=tickvals, ticktext=ticktext)
 
             # Build marker list: fill site, test site, high point, low point
@@ -342,8 +351,9 @@ class Section:
             raise ValueError("Outer diameter (OD) must be greater than zero.")
 
         # Validate column mapping exists in DataFrame
-        for key, col_name in col_map.items():
-            if col_name not in app.full_df.columns:
+        for key in ('station', 'elev', 'wt'):
+            col_name = col_map.get(key)
+            if not col_name or col_name not in app.full_df.columns:
                 raise ValueError(f"Column '{col_name}' (mapped as {key}) not found in data file. Available columns: {', '.join(app.full_df.columns[:10])}")
 
         start = parse_station(params['start'])
@@ -364,6 +374,12 @@ class Section:
         data['Elevation'] = pd.to_numeric(data[col_map['elev']], errors='coerce')
         data['WT'] = pd.to_numeric(data[col_map['wt']], errors='coerce')
         data = data.dropna(subset=['Station', 'Elevation', 'WT'])
+
+        # Keep only the columns we need to avoid merge collisions with reserved names
+        data = data[['Station', 'Elevation', 'WT']].copy()
+
+        if data.empty:
+            raise ValueError("No valid data after filtering NaN values. Check that Station, Elevation, and Wall Thickness columns contain numeric data.")
 
         # Drop duplicate stations (keeps first occurrence) to prevent merge cartesian products
         data = data.drop_duplicates(subset=['Station'], keep='first')
@@ -515,5 +531,6 @@ class Section:
         
         # Add Percent_SMYS
         self.points['Percent_SMYS'] = (self.points['Local_P'] / (2 * app.smys * self.points['WT'] / app.od)) * 100
-        self.table_data = self.points
+        # Sort table data by station so Cum_Gal is monotonically increasing
+        self.table_data = self.points.sort_values('Station').reset_index(drop=True)
 
