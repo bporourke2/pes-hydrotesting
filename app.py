@@ -82,6 +82,20 @@ def check_save_owner(data):
         abort(403, 'You do not have permission to access this analysis.')
     return True
 
+def check_portfolio_access(data):
+    """Verify current user has access to the portfolio this save belongs to.
+    Admins always pass. Standard users need the portfolio in their list."""
+    user = session.get('user', {})
+    if user.get('role') == 'hydro-admin':
+        return True
+    allowed = get_user_portfolio_ids(user)
+    if allowed is None:
+        return True  # admin
+    save_pf = data.get('portfolio_id')
+    if not save_pf or save_pf not in allowed:
+        abort(403, 'You do not have access to this portfolio.')
+    return True
+
 def safe_write_json(filepath, data):
     """Atomic JSON write via temp file + rename."""
     dirname = os.path.dirname(filepath)
@@ -131,54 +145,142 @@ def csrf_origin_check():
         if origin != expected:
             abort(403)
 
-# --- Authentik OIDC ---
-_client_id     = os.environ.get('AUTHENTIK_CLIENT_ID')
-_client_secret = os.environ.get('AUTHENTIK_CLIENT_SECRET')
-_app_slug      = os.environ.get('AUTHENTIK_APP_SLUG', 'hydrotest')
-_authentik_base = 'https://auth.thebrendan.online'
+@app.context_processor
+def inject_user_role():
+    """Make user_is_admin available in all templates."""
+    return {'user_is_admin': session.get('user', {}).get('role') == 'hydro-admin'}
+
+# --- OAuth / OIDC (multi-provider) ---
+from oauth_config import (load_providers, get_provider, get_default_provider,
+                          get_enabled_providers, migrate_from_env)
+from user_store import (upsert_user, get_user, is_admin, has_access,
+                        is_first_user, load_users, set_user_role, delete_user,
+                        get_user_portfolio_ids, set_user_portfolios,
+                        add_portfolio_to_user, remove_portfolio_from_all_users)
+
+# Migrate legacy .env config on first run
+migrate_from_env()
 
 oauth = OAuth(app)
-oauth.register(
-    name='authentik',
-    client_id=_client_id,
-    client_secret=_client_secret,
-    server_metadata_url=f'{_authentik_base}/application/o/{_app_slug}/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile'},
-)
+_registered_providers = set()
+
+def _ensure_registered(provider):
+    """Lazily register an OAuth client for a provider if not already done."""
+    name = f"oauth_{provider['id']}"
+    if name not in _registered_providers:
+        oauth.register(
+            name=name,
+            client_id=provider['client_id'],
+            client_secret=provider['client_secret'],
+            server_metadata_url=provider.get('discovery_url'),
+            client_kwargs={'scope': provider.get('scopes', 'openid email profile')},
+        )
+        _registered_providers.add(name)
+    return getattr(oauth, name)
+
+def _reload_provider(provider):
+    """Force re-register a provider (after config edit)."""
+    name = f"oauth_{provider['id']}"
+    _registered_providers.discard(name)
+    # Remove from authlib's internal registry so it re-reads config
+    oauth._clients.pop(name, None)
+    oauth._registry.pop(name, None)
+    return _ensure_registered(provider)
 
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('user'):
+            # Allow unauthenticated access if no providers configured
+            if not get_enabled_providers():
+                return redirect(url_for('oauth_setup'))
             session['next'] = request.url
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user'):
+            session['next'] = request.url
+            return redirect(url_for('login'))
+        if session['user'].get('role') != 'hydro-admin':
+            abort(403, 'Admin access required.')
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/login')
 def login():
+    provider_id = request.args.get('provider')
+    if provider_id:
+        provider = get_provider(provider_id)
+    else:
+        provider = get_default_provider()
+    if not provider:
+        return redirect(url_for('oauth_setup'))
+    enabled = get_enabled_providers()
+    if len(enabled) > 1 and not provider_id:
+        return render_template('login_select.html', providers=enabled)
+    client = _ensure_registered(provider)
+    session['_oauth_provider_id'] = provider['id']
     callback_url = url_for('auth_callback', _external=True)
-    return oauth.authentik.authorize_redirect(callback_url)
+    return client.authorize_redirect(callback_url)
 
 @app.route('/auth/callback')
 def auth_callback():
-    token = oauth.authentik.authorize_access_token()
-    userinfo = token.get('userinfo') or oauth.authentik.userinfo()
+    provider_id = session.pop('_oauth_provider_id', None)
+    provider = get_provider(provider_id) if provider_id else get_default_provider()
+    if not provider:
+        return "OAuth provider not found.", 400
+    client = _ensure_registered(provider)
+    token = client.authorize_access_token()
+    userinfo = token.get('userinfo') or client.userinfo()
+
+    # Extract groups from the configured claim (default: "groups")
+    groups_claim = provider.get('groups_claim', 'groups')
+    groups = userinfo.get(groups_claim, [])
+    if isinstance(groups, str):
+        groups = [g.strip() for g in groups.split(',')]
+
+    sub = userinfo.get('sub')
+    email = userinfo.get('email')
+    name = userinfo.get('name') or userinfo.get('preferred_username')
+
+    # First user ever gets auto-promoted to admin
+    first = is_first_user()
+
+    user_record = upsert_user(sub, email, name, groups, provider['id'])
+    if first and user_record.get('role') != 'hydro-admin':
+        set_user_role(sub, 'hydro-admin', lock=True)
+        user_record['role'] = 'hydro-admin'
+
+    # Block login if user has no valid role (not in hydro or hydro-admin group)
+    if not user_record.get('role'):
+        log_action('LOGIN_DENIED', f"{email} — no matching group ({groups})")
+        session.clear()
+        return render_template('login_denied.html', email=email, groups=groups), 403
+
     session['user'] = {
-        'sub':   userinfo.get('sub'),
-        'email': userinfo.get('email'),
-        'name':  userinfo.get('name') or userinfo.get('preferred_username'),
+        'sub': sub,
+        'email': email,
+        'name': name,
+        'role': user_record['role'],
     }
+    session['_oauth_provider_id'] = provider['id']
     next_url = session.pop('next', None)
-    log_action('LOGIN', session['user'].get('email', ''))
+    log_action('LOGIN', f"{email} role={user_record['role']}")
     return redirect(next_url or url_for('welcome'))
 
 @app.route('/logout')
 def logout():
     log_action('LOGOUT')
+    provider_id = session.get('_oauth_provider_id')
+    provider = get_provider(provider_id) if provider_id else None
     session.clear()
-    # Redirect to Authentik end-session endpoint
-    return redirect(f'{_authentik_base}/application/o/{_app_slug}/end-session/')
+    if provider and provider.get('logout_url'):
+        return redirect(provider['logout_url'])
+    return redirect(url_for('login'))
 
 app.jinja_env.filters['station_format'] = station_format
 
@@ -258,9 +360,10 @@ def load_all_saves():
 @login_required
 def welcome():
     saves = load_all_saves()
-    # Filter saves to only those owned by the current user (or with no owner for legacy saves)
-    user_sub = session.get('user', {}).get('sub')
-    saves = [s for s in saves if not s.get('owner_sub') or s['owner_sub'] == user_sub]
+    # Filter saves by portfolio access (admins see all, standard users see assigned portfolios)
+    allowed_pf_ids = get_user_portfolio_ids(session.get('user', {}))
+    if allowed_pf_ids is not None:
+        saves = [s for s in saves if s.get('portfolio_id') and s['portfolio_id'] in allowed_pf_ids]
     portfolios = load_portfolios()
     pf_map = {pf['id']: pf['name'] for pf in portfolios}
 
@@ -302,19 +405,24 @@ def portfolio_create():
     if name:
         portfolios = load_portfolios()
         if not any(pf['name'].lower() == name.lower() for pf in portfolios):
+            new_id = str(uuid.uuid4())[:8]
             portfolios.append({
-                'id': str(uuid.uuid4())[:8],
+                'id': new_id,
                 'name': name,
                 'company': request.form.get('company', '').strip() or None,
             })
             save_portfolios(portfolios)
+            # Auto-assign the new portfolio to the creating user
+            user_sub = session.get('user', {}).get('sub')
+            if user_sub:
+                add_portfolio_to_user(user_sub, new_id)
     next_page = request.form.get('next', 'welcome')
     if next_page not in ('welcome', 'settings'):
         next_page = 'welcome'
     return redirect(url_for(next_page))
 
 @app.route('/portfolio/edit/<portfolio_id>', methods=['POST'])
-@login_required
+@admin_required
 def portfolio_edit(portfolio_id):
     validate_save_id(portfolio_id)
     portfolios = load_portfolios()
@@ -327,7 +435,7 @@ def portfolio_edit(portfolio_id):
     return redirect(url_for('settings'))
 
 @app.route('/portfolio/delete/<portfolio_id>', methods=['POST'])
-@login_required
+@admin_required
 def portfolio_delete(portfolio_id):
     validate_save_id(portfolio_id)
     portfolios = load_portfolios()
@@ -345,15 +453,19 @@ def portfolio_delete(portfolio_id):
                     safe_write_json(fpath, save)
             except Exception:
                 pass
+    # Remove portfolio from all user access lists
+    remove_portfolio_from_all_users(portfolio_id)
     next_page = request.args.get('next', 'welcome')
     if next_page not in ('welcome', 'settings'):
         next_page = 'welcome'
     return redirect(url_for(next_page))
 
 @app.route('/settings', methods=['GET'])
-@login_required
+@admin_required
 def settings():
-    return render_template('settings.html', portfolios=load_portfolios(), companies=load_companies())
+    return render_template('settings.html', portfolios=load_portfolios(),
+                           companies=load_companies(), oauth_providers=load_providers(),
+                           users=load_users())
 
 @app.route('/settings/company/add', methods=['POST'])
 @login_required
@@ -369,7 +481,7 @@ def company_add():
     return redirect(url_for('settings'))
 
 @app.route('/settings/company/delete', methods=['POST'])
-@login_required
+@admin_required
 def company_delete():
     name = request.form.get('name', '').strip()
     if name:
@@ -378,6 +490,110 @@ def company_delete():
         save_companies(companies)
         log_action('COMPANY_DELETE', name)
     return redirect(url_for('settings'))
+
+# --- OAuth Provider Management ---
+from oauth_config import add_provider, update_provider, delete_provider, set_default_provider
+
+@app.route('/settings/oauth/add', methods=['POST'])
+@admin_required
+def oauth_add():
+    data = {
+        'name': request.form.get('name', '').strip(),
+        'provider_type': request.form.get('provider_type', 'oidc'),
+        'issuer_url': request.form.get('issuer_url', '').strip().rstrip('/'),
+        'client_id': request.form.get('client_id', '').strip(),
+        'client_secret': request.form.get('client_secret', '').strip(),
+        'discovery_url': request.form.get('discovery_url', '').strip(),
+        'scopes': request.form.get('scopes', 'openid email profile').strip(),
+        'logout_url': request.form.get('logout_url', '').strip(),
+        'app_slug': request.form.get('app_slug', '').strip(),
+        'groups_claim': request.form.get('groups_claim', 'groups').strip(),
+    }
+    if data['name'] and data['client_id'] and data['client_secret']:
+        p = add_provider(data)
+        log_action('OAUTH_ADD', f"{p['name']} ({p['id']})")
+    return redirect(url_for('settings') + '#oauth')
+
+@app.route('/settings/oauth/edit/<provider_id>', methods=['POST'])
+@admin_required
+def oauth_edit(provider_id):
+    data = {}
+    for key in ('name', 'provider_type', 'issuer_url', 'client_id', 'client_secret',
+                'discovery_url', 'scopes', 'logout_url', 'app_slug', 'groups_claim'):
+        val = request.form.get(key)
+        if val is not None:
+            data[key] = val.strip()
+    # Don't overwrite secret with empty string if user left it blank
+    if not data.get('client_secret'):
+        data.pop('client_secret', None)
+    data['enabled'] = request.form.get('enabled') == 'on'
+    p = update_provider(provider_id, data)
+    if p:
+        _reload_provider(p)
+        log_action('OAUTH_EDIT', f"{p['name']} ({p['id']})")
+    return redirect(url_for('settings') + '#oauth')
+
+@app.route('/settings/oauth/delete/<provider_id>', methods=['POST'])
+@admin_required
+def oauth_delete(provider_id):
+    provider = get_provider(provider_id)
+    if provider:
+        delete_provider(provider_id)
+        _registered_providers.discard(f"oauth_{provider_id}")
+        log_action('OAUTH_DELETE', f"{provider['name']} ({provider_id})")
+    return redirect(url_for('settings') + '#oauth')
+
+@app.route('/settings/oauth/default/<provider_id>', methods=['POST'])
+@admin_required
+def oauth_set_default(provider_id):
+    set_default_provider(provider_id)
+    log_action('OAUTH_DEFAULT', provider_id)
+    return redirect(url_for('settings') + '#oauth')
+
+@app.route('/settings/user/role', methods=['POST'])
+@admin_required
+def user_set_role():
+    sub = request.form.get('sub')
+    role = request.form.get('role')
+    if sub and role:
+        u = set_user_role(sub, role, lock=True)
+        if u:
+            log_action('USER_ROLE', f"{u.get('email')} -> {role}")
+    return redirect(url_for('settings') + '#users')
+
+@app.route('/settings/user/delete', methods=['POST'])
+@admin_required
+def user_delete():
+    sub = request.form.get('sub')
+    if sub and sub != session.get('user', {}).get('sub'):
+        user = get_user(sub)
+        if user:
+            delete_user(sub)
+            log_action('USER_DELETE', user.get('email', sub))
+    return redirect(url_for('settings') + '#users')
+
+@app.route('/setup/oauth', methods=['GET', 'POST'])
+def oauth_setup():
+    """Initial setup page when no OAuth providers are configured."""
+    if get_enabled_providers() and not session.get('user'):
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        data = {
+            'name': request.form.get('name', '').strip() or 'Default Provider',
+            'provider_type': request.form.get('provider_type', 'oidc'),
+            'issuer_url': request.form.get('issuer_url', '').strip().rstrip('/'),
+            'client_id': request.form.get('client_id', '').strip(),
+            'client_secret': request.form.get('client_secret', '').strip(),
+            'discovery_url': request.form.get('discovery_url', '').strip(),
+            'scopes': request.form.get('scopes', 'openid email profile').strip(),
+            'logout_url': request.form.get('logout_url', '').strip(),
+            'app_slug': request.form.get('app_slug', '').strip(),
+            'groups_claim': request.form.get('groups_claim', 'groups').strip(),
+        }
+        if data['client_id'] and data['client_secret']:
+            add_provider(data)
+            return redirect(url_for('login'))
+    return render_template('oauth_setup.html')
 
 @app.route('/project_setup', methods=['GET', 'POST'])
 @login_required
@@ -859,6 +1075,11 @@ def save_analysis():
     p['portfolio_id'] = portfolio_id
     session['params'] = p
 
+    # Auto-assign portfolio to user if they don't already have access
+    user_sub = session.get('user', {}).get('sub')
+    if user_sub and portfolio_id:
+        add_portfolio_to_user(user_sub, portfolio_id)
+
     # Keep project_info.portfolio_id in sync
     pi = session.get('project_info', {})
     pi['portfolio_id'] = portfolio_id
@@ -895,7 +1116,7 @@ def load_save(save_id):
         return "Save not found.", 404
     with open(save_file) as f:
         data = json.load(f)
-    check_save_owner(data)
+    check_portfolio_access(data)
     log_action('LOAD', f'id={save_id} name="{data.get("name", "")}"')
     if 'params' not in data or 'col_map' not in data or 'file_path' not in data:
         return "Save file is incomplete or corrupted.", 400
@@ -925,7 +1146,7 @@ def load_version(save_id, version_num):
         return "Save file is incomplete or corrupted.", 400
     if not validate_file_path(data['file_path']):
         return "Save references an invalid file path.", 400
-    check_save_owner(data)
+    check_portfolio_access(data)
     log_action('LOAD_VERSION', f'id={save_id} name="{data.get("name", "")}" v{version_num}')
     # Load historical params but keep the current save's col_map and file_path
     session['params'] = entry.get('params', {})
@@ -945,7 +1166,7 @@ def delete_save(save_id):
     if os.path.exists(save_file):
         with open(save_file) as f:
             data = json.load(f)
-        check_save_owner(data)
+        check_portfolio_access(data)
         name = data.get('name', '')
         os.remove(save_file)
     if os.path.exists(data_file):
@@ -1017,7 +1238,7 @@ def pv_plot(save_id):
         return "Save not found.", 404
     with open(save_file) as f:
         data = json.load(f)
-    check_save_owner(data)
+    check_portfolio_access(data)
     p = data.get('params', {})
     total_volume_gal = None
     avg_wt = None
@@ -1084,7 +1305,7 @@ def pv_save(save_id):
         return jsonify({'error': 'Save not found'}), 404
     with open(save_file) as f:
         data = json.load(f)
-    check_save_owner(data)
+    check_portfolio_access(data)
     payload = request.get_json()
     if payload is None:
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
