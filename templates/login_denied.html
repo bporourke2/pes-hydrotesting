@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Access Denied — Hydrotest Tool</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+        .logo { max-width: 160px; margin-bottom: 24px; }
+        .card { background: white; border-radius: 10px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #e74c3c; width: 100%; max-width: 480px; text-align: center; }
+        h1 { color: #e74c3c; font-size: 1.3em; margin-bottom: 12px; }
+        p { color: #555; font-size: 0.92em; margin-bottom: 10px; line-height: 1.5; }
+        .email { font-weight: 600; color: #2c3e50; }
+        .groups { background: #f8f9fa; border-radius: 4px; padding: 8px 12px; margin: 12px 0; font-size: 0.82em; color: #7f8c8d; }
+        .groups code { background: #eee; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+        .btn { display: inline-block; padding: 10px 24px; background: #2c3e50; color: white; border-radius: 4px; text-decoration: none; font-weight: 600; font-size: 0.9em; margin-top: 16px; }
+        .btn:hover { opacity: 0.88; }
+    </style>
+</head>
+<body>
+
+<img src="/static/peslogo.png" alt="PES Logo" class="logo">
+<div class="card">
+    <h1>Access Denied</h1>
+    <p>Your account <span class="email">{{ email }}</span> does not belong to a required group.</p>
+    <p>To access this tool, your identity provider must assign you to one of these groups:</p>
+    <div class="groups">
+        <code>hydro</code> (standard user) &nbsp;or&nbsp; <code>hydro-admin</code> (administrator)
+    </div>
+    {% if groups %}
+    <p style="font-size:0.82em; color:#95a5a6; margin-top:8px;">Your current groups: {{ groups | join(', ') }}</p>
+    {% else %}
+    <p style="font-size:0.82em; color:#95a5a6; margin-top:8px;">No groups were found in your login token.</p>
+    {% endif %}
+    <p style="font-size:0.82em; color:#95a5a6;">Contact your administrator to be added to the appropriate group.</p>
+    <a href="/login" class="btn">Try Again</a>
+</div>
+
+</body>
+</html>

@@ -136,10 +136,214 @@
     </form>
 </div>
 
-<!-- Permissions (placeholder) -->
-<div class="card" style="border-top-color: #95a5a6;">
-    <h2>Permissions</h2>
-    <div class="coming-soon">User permission management — coming soon</div>
+<!-- OAuth Providers -->
+<div class="card" id="oauth" style="border-top-color: #8e44ad;">
+    <h2>Authentication Providers</h2>
+
+    {% if oauth_providers %}
+    {% for op in oauth_providers %}
+    <div style="margin-bottom:14px; padding:12px; background:#f8f9fa; border-radius:6px; border-left:4px solid {% if op.is_default %}#27ae60{% elif not op.enabled %}#bdc3c7{% else %}#8e44ad{% endif %};">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <span style="font-weight:600; color:#2c3e50;">
+                {{ op.name }}
+                {% if op.is_default %}<span style="font-size:0.72em; background:#27ae60; color:white; padding:2px 6px; border-radius:3px; margin-left:6px;">DEFAULT</span>{% endif %}
+                {% if not op.enabled %}<span style="font-size:0.72em; background:#bdc3c7; color:white; padding:2px 6px; border-radius:3px; margin-left:6px;">DISABLED</span>{% endif %}
+            </span>
+            <div style="display:flex; gap:4px;">
+                <button type="button" class="btn-edit" onclick="toggleEdit('oauth-{{ op.id }}')">&#9998; Edit</button>
+                {% if not op.is_default and op.enabled %}
+                <form method="POST" action="/settings/oauth/default/{{ op.id }}" style="display:inline;">
+                    <button type="submit" class="btn-edit" title="Set as default">&#9733;</button>
+                </form>
+                {% endif %}
+                <form method="POST" action="/settings/oauth/delete/{{ op.id }}" style="display:inline;" onsubmit="return confirm('Delete provider {{ op.name }}?')">
+                    <button type="submit" class="btn-red" title="Delete">&#x2715;</button>
+                </form>
+            </div>
+        </div>
+        <div style="font-size:0.8em; color:#7f8c8d;">
+            <span>{{ op.provider_type|upper }}</span> &middot;
+            <span>{{ op.issuer_url }}</span> &middot;
+            <span>Client: {{ op.client_id[:12] }}...</span>
+        </div>
+
+        <!-- Edit form (hidden by default) -->
+        <form method="POST" action="/settings/oauth/edit/{{ op.id }}" id="edit-oauth-{{ op.id }}" class="edit-form" style="display:none; flex-direction:column; margin-top:10px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div>
+                    <label style="margin-top:0;">Name</label>
+                    <input type="text" name="name" value="{{ op.name }}" required>
+                </div>
+                <div>
+                    <label style="margin-top:0;">Type</label>
+                    <select name="provider_type" onchange="toggleOauthType(this, '{{ op.id }}')">
+                        <option value="authentik" {% if op.provider_type == 'authentik' %}selected{% endif %}>Authentik</option>
+                        <option value="oidc" {% if op.provider_type == 'oidc' %}selected{% endif %}>Generic OIDC</option>
+                    </select>
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label>Issuer URL</label>
+                    <input type="url" name="issuer_url" value="{{ op.issuer_url }}">
+                </div>
+                <div>
+                    <label>Client ID</label>
+                    <input type="text" name="client_id" value="{{ op.client_id }}">
+                </div>
+                <div>
+                    <label>Client Secret</label>
+                    <input type="password" name="client_secret" placeholder="(unchanged if blank)">
+                </div>
+                <div id="slug-{{ op.id }}" style="{% if op.provider_type != 'authentik' %}display:none;{% endif %}">
+                    <label>App Slug</label>
+                    <input type="text" name="app_slug" value="{{ op.get('app_slug', '') }}">
+                </div>
+                <div id="discovery-{{ op.id }}" style="{% if op.provider_type == 'authentik' %}display:none;{% endif %} grid-column:1/-1;">
+                    <label>Discovery URL</label>
+                    <input type="url" name="discovery_url" value="{{ op.discovery_url }}">
+                </div>
+                <div>
+                    <label>Logout URL</label>
+                    <input type="url" name="logout_url" value="{{ op.get('logout_url', '') }}">
+                </div>
+                <div>
+                    <label>Scopes</label>
+                    <input type="text" name="scopes" value="{{ op.get('scopes', 'openid email profile') }}">
+                </div>
+                <div>
+                    <label>Groups Claim</label>
+                    <input type="text" name="groups_claim" value="{{ op.get('groups_claim', 'groups') }}" placeholder="groups">
+                </div>
+                <div style="grid-column:1/-1; display:flex; align-items:center; gap:8px; margin-top:4px;">
+                    <label style="margin:0; display:inline;">
+                        <input type="checkbox" name="enabled" {% if op.enabled %}checked{% endif %}> Enabled
+                    </label>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button type="submit" class="btn btn-green" style="padding:7px 18px; font-size:0.85em;">Save Changes</button>
+                <button type="button" class="btn-edit" onclick="toggleEdit('oauth-{{ op.id }}')">Cancel</button>
+            </div>
+        </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="color:#bdc3c7; font-style:italic; font-size:0.88em; margin-bottom:14px;">No providers configured</p>
+    {% endif %}
+
+    <!-- Add Provider Form -->
+    <details style="margin-top:12px;">
+        <summary style="cursor:pointer; font-size:0.88em; font-weight:600; color:#8e44ad;">+ Add Provider</summary>
+        <form method="POST" action="/settings/oauth/add" style="margin-top:12px; background:#faf8fd; padding:14px; border-radius:6px; border:1px solid #e8ddf0;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div>
+                    <label style="margin-top:0;">Name</label>
+                    <input type="text" name="name" placeholder="e.g. Company SSO" required>
+                </div>
+                <div>
+                    <label style="margin-top:0;">Type</label>
+                    <select name="provider_type" id="add-provider-type" onchange="toggleAddType()">
+                        <option value="authentik">Authentik</option>
+                        <option value="oidc">Generic OIDC</option>
+                    </select>
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label>Issuer URL</label>
+                    <input type="url" name="issuer_url" placeholder="https://auth.example.com" required>
+                </div>
+                <div>
+                    <label>Client ID</label>
+                    <input type="text" name="client_id" required>
+                </div>
+                <div>
+                    <label>Client Secret</label>
+                    <input type="password" name="client_secret" required>
+                </div>
+                <div id="add-slug-field">
+                    <label>App Slug</label>
+                    <input type="text" name="app_slug" placeholder="e.g. hydrotest">
+                </div>
+                <div id="add-discovery-field" style="display:none; grid-column:1/-1;">
+                    <label>Discovery URL</label>
+                    <input type="url" name="discovery_url" placeholder="Auto-derived if blank">
+                </div>
+                <div>
+                    <label>Logout URL</label>
+                    <input type="url" name="logout_url" placeholder="Optional">
+                </div>
+                <div>
+                    <label>Scopes</label>
+                    <input type="text" name="scopes" value="openid email profile">
+                </div>
+                <div>
+                    <label>Groups Claim</label>
+                    <input type="text" name="groups_claim" value="groups" placeholder="groups">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-green" style="margin-top:12px; padding:8px 18px; font-size:0.88em; width:auto; display:inline-block;">Add Provider</button>
+        </form>
+    </details>
+</div>
+
+<!-- Users -->
+<div class="card" id="users" style="border-top-color: #e67e22;">
+    <h2>Users &amp; Permissions</h2>
+    <p style="font-size:0.8em; color:#7f8c8d; margin-bottom:14px;">
+        Users are imported automatically on login via OIDC groups.
+        Required groups: <strong>hydro</strong> (standard) or <strong>hydro-admin</strong> (admin).
+    </p>
+
+    {% if users %}
+    <table style="width:100%; border-collapse:collapse; font-size:0.85em;">
+        <thead>
+            <tr style="border-bottom:2px solid #dee2e6;">
+                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">User</th>
+                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">Groups</th>
+                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">Role</th>
+                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">Last Login</th>
+                <th style="padding:8px; width:120px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:8px;">
+                    <strong>{{ u.name or 'Unknown' }}</strong>
+                    <br><span style="font-size:0.85em; color:#7f8c8d;">{{ u.email }}</span>
+                </td>
+                <td style="padding:8px;">
+                    {% for g in u.get('groups', []) %}
+                    <span style="display:inline-block; padding:2px 6px; background:{% if g == 'hydro-admin' %}#8e44ad{% elif g == 'hydro' %}#2980b9{% else %}#bdc3c7{% endif %}; color:white; border-radius:3px; font-size:0.75em; margin:1px;">{{ g }}</span>
+                    {% endfor %}
+                    {% if not u.get('groups') %}<span style="color:#bdc3c7; font-size:0.85em;">none</span>{% endif %}
+                </td>
+                <td style="padding:8px;">
+                    <form method="POST" action="/settings/user/role" style="display:flex; gap:4px; align-items:center;">
+                        <input type="hidden" name="sub" value="{{ u.sub }}">
+                        <select name="role" style="padding:4px 6px; font-size:0.85em; border:1px solid #ddd; border-radius:3px;" onchange="this.form.submit()">
+                            <option value="hydro" {% if u.role == 'hydro' %}selected{% endif %}>hydro</option>
+                            <option value="hydro-admin" {% if u.role == 'hydro-admin' %}selected{% endif %}>hydro-admin</option>
+                        </select>
+                        {% if u.get('role_locked') %}<span style="font-size:0.7em; color:#e67e22;" title="Role was manually set and won't be overwritten by OIDC groups on next login">&#128274;</span>{% endif %}
+                    </form>
+                </td>
+                <td style="padding:8px; font-size:0.85em; color:#7f8c8d;">{{ u.get('last_login', '') }}</td>
+                <td style="padding:8px; text-align:right;">
+                    {% if u.sub != session.get('user', {}).get('sub') %}
+                    <form method="POST" action="/settings/user/delete" onsubmit="return confirm('Remove user {{ u.name or u.email }}?')">
+                        <input type="hidden" name="sub" value="{{ u.sub }}">
+                        <button type="submit" class="btn-red" title="Remove user">&#x2715;</button>
+                    </form>
+                    {% else %}
+                    <span style="font-size:0.75em; color:#95a5a6;">you</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#bdc3c7; font-style:italic; font-size:0.88em;">No users have logged in yet</p>
+    {% endif %}
 </div>
 
 <a href="/" class="back-link">&#8592; Back to Home</a>
@@ -148,6 +352,21 @@
     function toggleEdit(id) {
         var form = document.getElementById('edit-' + id);
         form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    }
+    function toggleOauthType(sel, id) {
+        var isAuthentik = sel.value === 'authentik';
+        document.getElementById('slug-' + id).style.display = isAuthentik ? '' : 'none';
+        document.getElementById('discovery-' + id).style.display = isAuthentik ? 'none' : '';
+    }
+    function toggleAddType() {
+        var isAuthentik = document.getElementById('add-provider-type').value === 'authentik';
+        document.getElementById('add-slug-field').style.display = isAuthentik ? '' : 'none';
+        document.getElementById('add-discovery-field').style.display = isAuthentik ? 'none' : '';
+    }
+    // Scroll to #oauth anchor if present
+    if (window.location.hash === '#oauth') {
+        var el = document.getElementById('oauth');
+        if (el) el.scrollIntoView({behavior: 'smooth'});
     }
 </script>
 </body>

@@ -69,6 +69,8 @@
 
 <div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#95a5a6; z-index:200; background:rgba(22,33,62,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">
     {{ session.user.name or session.user.email }}
+    {% if user_is_admin %}&nbsp;·&nbsp;
+    <a href="/settings" style="color:#8e44ad; text-decoration:none; font-weight:600;">Settings</a>{% endif %}
     &nbsp;·&nbsp;
     <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
 </div>
