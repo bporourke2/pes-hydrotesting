@@ -16,7 +16,8 @@ import re
 import tempfile
 import threading
 from datetime import datetime
-from logic import PipelineApp, Section, parse_station, station_format
+import pandas as pd
+from logic import PipelineApp, Section, parse_station, station_format, rupture_analysis, multi_rupture_analysis, temp_correction_factor, nps_to_od, od_to_nps, NPS_OD
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger('hydrotest')
@@ -29,6 +30,15 @@ def log_action(action, detail=''):
     if detail:
         msg += f' — {detail}'
     logger.info(msg)
+
+def get_od(params):
+    """Resolve OD from params: prefer NPS lookup, fall back to stored od."""
+    nps = params.get('nps')
+    if nps:
+        od = nps_to_od(str(nps))
+        if od:
+            return od
+    return float(params.get('od', 42.0))
 
 load_dotenv()
 
@@ -284,11 +294,36 @@ def logout():
 
 app.jinja_env.filters['station_format'] = station_format
 
+def build_wt_column(df, col_map):
+    """Apply wall thickness to df['_wt'], supporting a constant value or a named column."""
+    wt_col = col_map.get('wt')
+    if wt_col == '__constant__':
+        df['_wt'] = float(col_map.get('wt_constant', 0.5))
+    else:
+        df['_wt'] = pd.to_numeric(df[wt_col], errors='coerce')
+    return df
+
 SAVES_DIR = os.path.join(_APP_DIR, 'saves')
 UPLOADS_DIR = os.path.join(_APP_DIR, 'uploads')
 DEMO_FILE = os.path.join(_APP_DIR, 'data', 'Testdata.xlsx')
 os.makedirs(SAVES_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+DEV_MODE = False
+DOCS_DIR = None
+_ALLOWED_DOC_EXTS = {'.pdf', '.txt', '.md', '.docx', '.xlsx', '.csv'}
+
+def load_docs():
+    if not DOCS_DIR:
+        return []
+    idx = os.path.join(DOCS_DIR, '_index.json')
+    if not os.path.exists(idx):
+        return []
+    with open(idx) as f:
+        return json.load(f)
+
+def save_docs(docs):
+    safe_write_json(os.path.join(DOCS_DIR, '_index.json'), docs)
 
 grade_smys = {
     'B': 35000,
@@ -369,12 +404,15 @@ def welcome():
 
     # Build company_tree: Company > Portfolio > Spread > Test Segment (save)
     from collections import OrderedDict
+    pf_company_map = {pf['id']: pf.get('company', '') for pf in portfolios}
     # tree_raw[company][pf_id][spread] = [saves]
     tree_raw = OrderedDict()
     for s in saves:
         pi = s.get('project_info') or {}
-        company = pi.get('owner_company', '').strip() or 'No Company'
         pf_id   = s.get('portfolio_id') or '__none__'
+        company = (pi.get('owner_company', '').strip()
+                   or pf_company_map.get(pf_id, '').strip()
+                   or 'No Company')
         spread  = pi.get('spread', '').strip() or 'No Spread'
         if company not in tree_raw:
             tree_raw[company] = OrderedDict()
@@ -465,7 +503,7 @@ def portfolio_delete(portfolio_id):
 def settings():
     return render_template('settings.html', portfolios=load_portfolios(),
                            companies=load_companies(), oauth_providers=load_providers(),
-                           users=load_users())
+                           users=load_users(), docs=load_docs(), dev_mode=DEV_MODE)
 
 @app.route('/settings/company/add', methods=['POST'])
 @login_required
@@ -571,6 +609,357 @@ def user_delete():
             delete_user(sub)
             log_action('USER_DELETE', user.get('email', sub))
     return redirect(url_for('settings') + '#users')
+
+@app.route('/settings/docs/upload', methods=['POST'])
+@admin_required
+def docs_upload():
+    if not DEV_MODE:
+        abort(403)
+    f = request.files.get('doc')
+    if not f or not f.filename:
+        return redirect(url_for('settings') + '#docs')
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in _ALLOWED_DOC_EXTS:
+        return redirect(url_for('settings') + '#docs')
+    safe_name = secure_filename(f.filename)
+    doc_id = uuid.uuid4().hex[:8]
+    stored_name = f'{doc_id}_{safe_name}'
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    dest = os.path.join(DOCS_DIR, stored_name)
+    f.save(dest)
+    docs = load_docs()
+    docs.append({
+        'id': doc_id,
+        'original_name': f.filename,
+        'stored_name': stored_name,
+        'uploaded_by': session.get('user', {}).get('email', 'unknown'),
+        'upload_date': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'size': os.path.getsize(dest),
+    })
+    save_docs(docs)
+    log_action('DOCS_UPLOAD', f.filename)
+    return redirect(url_for('settings') + '#docs')
+
+@app.route('/settings/docs/delete', methods=['POST'])
+@admin_required
+def docs_delete():
+    if not DEV_MODE:
+        abort(403)
+    doc_id = request.form.get('id', '')
+    if not re.match(r'^[a-f0-9]{8}$', doc_id):
+        return redirect(url_for('settings') + '#docs')
+    docs = load_docs()
+    doc = next((d for d in docs if d['id'] == doc_id), None)
+    if doc:
+        dest = os.path.join(DOCS_DIR, doc['stored_name'])
+        if os.path.exists(dest) and validate_file_path(dest):
+            os.remove(dest)
+        docs = [d for d in docs if d['id'] != doc_id]
+        save_docs(docs)
+        log_action('DOCS_DELETE', doc['original_name'])
+    return redirect(url_for('settings') + '#docs')
+
+@app.route('/rupture/<save_id>', methods=['GET', 'POST'])
+@login_required
+def rupture(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        abort(404)
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+
+    col_map = data.get('col_map', {})
+    file_path = data.get('file_path', '')
+    if not file_path or not os.path.exists(file_path) or not validate_file_path(file_path):
+        abort(400, 'Survey file not available for this save.')
+
+    sheet = col_map.get('sheet', 0)
+    df = get_cached_df(file_path, sheet=sheet)
+    params = data.get('params', {})
+
+    # Parse station/elevation columns matching how Section does it
+    station_col = col_map.get('station')
+    elev_col = col_map.get('elev')
+    wt_col = col_map.get('wt')
+    if not station_col or not elev_col or not wt_col:
+        abort(400, 'Column mapping incomplete.')
+
+    df = df.copy()
+    df['_stn'] = df[station_col].apply(lambda v: parse_station(v))
+    df['_elev'] = pd.to_numeric(df[elev_col], errors='coerce')
+    build_wt_column(df, col_map)
+    df = df.dropna(subset=['_stn', '_elev', '_wt'])
+
+    start = parse_station(params['start'])
+    end = parse_station(params['end'])
+    df = df[(df['_stn'] >= min(start, end)) & (df['_stn'] <= max(start, end))].copy()
+    df = df.sort_values('_stn').reset_index(drop=True)
+
+    od = get_od(params)
+    avg_wt = float(df['_wt'].mean())
+
+    result = None
+    multi_result = None
+    error = None
+    rup_station_inputs = []
+    specific_weight = 62.4
+    loaded_ra_id = ''
+    loaded_ra = None
+
+    stns_list = df['_stn'].tolist()
+    elevs_list = df['_elev'].tolist()
+    stn_min = df['_stn'].min()
+    stn_max = df['_stn'].max()
+
+    def _run(raw_stns, sw):
+        parsed = []
+        for s in raw_stns:
+            stn = parse_station(s.strip())
+            if not (stn_min <= stn <= stn_max):
+                raise ValueError(f'Rupture station {s.strip()} is outside the analysis section range.')
+            parsed.append(stn)
+        if len(parsed) == 1:
+            return rupture_analysis(stns_list, elevs_list, parsed[0], od, avg_wt, sw), None
+        return None, multi_rupture_analysis(stns_list, elevs_list, parsed, od, avg_wt, sw)
+
+    if request.method == 'POST':
+        loaded_ra_id = request.form.get('ra_id', '').strip()
+        if loaded_ra_id:
+            for ra in data.get('rupture_analyses', []):
+                if ra.get('id') == loaded_ra_id:
+                    loaded_ra = ra
+                    break
+        try:
+            raw = [s for s in request.form.getlist('rup_station') if s.strip()]
+            specific_weight = float(request.form.get('specific_weight', 62.4))
+            if raw:
+                rup_station_inputs = raw
+                result, multi_result = _run(raw, specific_weight)
+                log_action('RUPTURE_ANALYSIS', f'save={save_id} stations={raw}')
+        except Exception as e:
+            error = str(e)
+    elif request.method == 'GET':
+        raw = [s for s in request.args.getlist('rup_station') if s.strip()]
+        loaded_ra_id = request.args.get('ra_id', '').strip()
+        if loaded_ra_id:
+            for ra in data.get('rupture_analyses', []):
+                if ra.get('id') == loaded_ra_id:
+                    loaded_ra = ra
+                    break
+        if raw:
+            try:
+                specific_weight = float(request.args.get('specific_weight', 62.4))
+                rup_station_inputs = raw
+                result, multi_result = _run(raw, specific_weight)
+            except Exception as e:
+                error = str(e)
+
+    rupture_analyses = data.get('rupture_analyses', [])
+    return render_template('rupture.html',
+        save_id=save_id,
+        save_name=data.get('name', 'Untitled'),
+        params=params,
+        od=od,
+        nps=params.get('nps', od_to_nps(od) or ''),
+        avg_wt=round(avg_wt, 4),
+        section_start=stn_min,
+        section_end=stn_max,
+        result=result,
+        multi_result=multi_result,
+        error=error,
+        rup_station_inputs=rup_station_inputs,
+        rup_station_input=rup_station_inputs[0] if len(rup_station_inputs) == 1 else (rup_station_inputs[0] if rup_station_inputs else ''),
+        specific_weight=specific_weight,
+        rupture_analyses=rupture_analyses,
+        loaded_ra_id=loaded_ra_id,
+        loaded_ra=loaded_ra,
+    )
+
+
+@app.route('/rupture/<save_id>/save', methods=['POST'])
+@login_required
+def rupture_save(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        abort(404)
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+
+    col_map = data.get('col_map', {})
+    file_path = data.get('file_path', '')
+    if not file_path or not os.path.exists(file_path) or not validate_file_path(file_path):
+        abort(400)
+
+    sheet = col_map.get('sheet', 0)
+    df = get_cached_df(file_path, sheet=sheet)
+    params = data.get('params', {})
+    station_col = col_map.get('station')
+    elev_col = col_map.get('elev')
+    wt_col = col_map.get('wt')
+
+    df = df.copy()
+    df['_stn'] = df[station_col].apply(lambda v: parse_station(v))
+    df['_elev'] = pd.to_numeric(df[elev_col], errors='coerce')
+    build_wt_column(df, col_map)
+    df = df.dropna(subset=['_stn', '_elev', '_wt'])
+    start = parse_station(params['start'])
+    end = parse_station(params['end'])
+    df = df[(df['_stn'] >= min(start, end)) & (df['_stn'] <= max(start, end))].copy()
+    df = df.sort_values('_stn').reset_index(drop=True)
+    od = get_od(params)
+    avg_wt = float(df['_wt'].mean())
+
+    stns_list = df['_stn'].tolist()
+    elevs_list = df['_elev'].tolist()
+    stn_min = df['_stn'].min()
+    stn_max = df['_stn'].max()
+
+    raw_stns = [s for s in request.form.getlist('rup_station') if s.strip()]
+    specific_weight_str = request.form.get('specific_weight', '62.4')
+    label = request.form.get('label', '').strip() or 'Unnamed'
+    ra_id = request.form.get('ra_id', '').strip()
+    specific_weight = 62.4
+    redirect_params = {'save_id': save_id, 'specific_weight': specific_weight_str}
+
+    try:
+        specific_weight = float(specific_weight_str)
+        if not raw_stns:
+            raise ValueError('No rupture station provided.')
+        parsed_stns = []
+        for s in raw_stns:
+            stn = parse_station(s.strip())
+            if not (stn_min <= stn <= stn_max):
+                raise ValueError(f'Rupture station {s.strip()} outside range.')
+            parsed_stns.append(stn)
+
+        if len(parsed_stns) == 1:
+            result = rupture_analysis(stns_list, elevs_list, parsed_stns[0], od, avg_wt, specific_weight)
+            entry_results = {
+                'rup_elev': result['rup_elev'],
+                'threshold_elev': result['threshold_elev'],
+                'upstream_drained_ft': result['upstream_drained_ft'],
+                'downstream_drained_ft': result['downstream_drained_ft'],
+                'total_released_gal': result['total_released_gal'],
+                'total_released_bbl': result['total_released_bbl'],
+                'pct_released': result['pct_released'],
+            }
+            mode = 'single'
+        else:
+            mr = multi_rupture_analysis(stns_list, elevs_list, parsed_stns, od, avg_wt, specific_weight)
+            entry_results = {
+                'total_released_gal': mr['total_released_gal'],
+                'total_released_bbl': mr['total_released_bbl'],
+                'pct_released': mr['pct_released'],
+                'per_rupture': [{
+                    'rup_station': r['rup_station'],
+                    'rup_elev': r['rup_elev'],
+                    'total_released_gal': r['total_released_gal'],
+                    'pct_released': r['pct_released'],
+                } for r in mr['per_rupture']],
+            }
+            mode = 'multi'
+    except Exception:
+        for s in raw_stns:
+            redirect_params['rup_station'] = s
+        return redirect(url_for('rupture', **redirect_params))
+
+    entry_id = ra_id if ra_id else uuid.uuid4().hex[:8]
+    actor = session.get('user', {}).get('name') or session.get('user', {}).get('email') or 'Unknown'
+    now_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    entry = {
+        'id': entry_id,
+        'label': label,
+        'mode': mode,
+        'rup_station': raw_stns[0] if len(raw_stns) == 1 else raw_stns,
+        'specific_weight': specific_weight,
+        'saved_at': now_iso,
+        'saved_by': actor,
+        'results': entry_results,
+    }
+
+    if 'rupture_analyses' not in data:
+        data['rupture_analyses'] = []
+
+    if ra_id:
+        replaced = False
+        for i, ra in enumerate(data['rupture_analyses']):
+            if ra.get('id') == ra_id:
+                # Preserve original save metadata; record the update
+                entry['saved_at'] = ra.get('saved_at', now_iso)
+                entry['saved_by'] = ra.get('saved_by', actor)
+                entry['modified_at'] = now_iso
+                entry['modified_by'] = actor
+                data['rupture_analyses'][i] = entry
+                replaced = True
+                break
+        if not replaced:
+            data['rupture_analyses'].append(entry)
+    else:
+        data['rupture_analyses'].append(entry)
+
+    with open(save_file, 'w') as f:
+        json.dump(data, f, indent=2)
+    log_action('RUPTURE_SAVE', f'save={save_id} label={label} mode={mode} stns={raw_stns}')
+
+    from urllib.parse import quote
+    qs_parts = [f'specific_weight={specific_weight}', f'ra_id={entry_id}']
+    for s in raw_stns:
+        qs_parts.append(f'rup_station={quote(s, safe="")}')
+    return redirect(f'/rupture/{save_id}?' + '&'.join(qs_parts))
+
+
+@app.route('/rupture/<save_id>/rename_ra', methods=['POST'])
+@login_required
+def rupture_rename_ra(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        abort(404)
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+
+    ra_id = request.form.get('ra_id', '').strip()
+    new_label = request.form.get('label', '').strip()
+    if ra_id and new_label:
+        for ra in data.get('rupture_analyses', []):
+            if ra.get('id') == ra_id:
+                ra['label'] = new_label
+                break
+        with open(save_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        log_action('RUPTURE_RENAME_RA', f'save={save_id} ra_id={ra_id} label={new_label}')
+
+    return redirect(url_for('rupture', save_id=save_id))
+
+
+@app.route('/rupture/<save_id>/delete_ra', methods=['POST'])
+@login_required
+def rupture_delete_ra(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        abort(404)
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+
+    ra_id = request.form.get('ra_id', '').strip()
+    if ra_id:
+        before = len(data.get('rupture_analyses', []))
+        data['rupture_analyses'] = [ra for ra in data.get('rupture_analyses', []) if ra.get('id') != ra_id]
+        if len(data['rupture_analyses']) < before:
+            with open(save_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            log_action('RUPTURE_DELETE_RA', f'save={save_id} ra_id={ra_id}')
+
+    return redirect(url_for('rupture', save_id=save_id))
+
 
 @app.route('/setup/oauth', methods=['GET', 'POST'])
 def oauth_setup():
@@ -711,12 +1100,18 @@ def mapping():
                 selected_sheet = int(selected_sheet)
             except (ValueError, TypeError):
                 pass  # keep as string sheet name
-            session['col_map'] = {
+            new_col_map = {
                 'station': col_station,
                 'elev': col_elev,
                 'wt': col_wt,
                 'sheet': selected_sheet,
             }
+            if col_wt == '__constant__':
+                try:
+                    new_col_map['wt_constant'] = float(request.form.get('wt_constant', 0.5))
+                except (ValueError, TypeError):
+                    new_col_map['wt_constant'] = 0.5
+            session['col_map'] = new_col_map
 
             # Pre-populate params based on data after column mapping
             file_path = session.get('file_path', DEMO_FILE)
@@ -756,8 +1151,12 @@ def mapping():
             # Update from form if provided
             if request.form.get('grade'):
                 p['grade'] = request.form['grade']
-            if request.form.get('od'):
-                p['od'] = float(request.form['od'])
+            if request.form.get('nps'):
+                nps_val = request.form['nps']
+                od_val = nps_to_od(nps_val)
+                if od_val:
+                    p['nps'] = nps_val
+                    p['od'] = od_val
             if request.form.get('min_p'):
                 p['min_p'] = float(request.form['min_p'])
 
@@ -880,8 +1279,15 @@ def results():
                 else:
                     form_dict[key] = p.get(key)  # Fallback to session
 
+        # Handle NPS → OD conversion
+        if form_dict.get('nps'):
+            od_val = nps_to_od(form_dict['nps'])
+            if od_val:
+                form_dict['nps'] = form_dict['nps']
+                form_dict['od'] = od_val
+
         # Handle numeric fields to convert strings to floats, fallback if invalid or empty
-        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length', 'head_factor']
+        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length', 'head_factor']
         for key in numeric_keys:
             if key in form_dict:
                 value = form_dict[key].strip() if form_dict[key] else ''
@@ -897,7 +1303,7 @@ def results():
                         form_dict[key] = p.get(key)  # Keep previous if empty for non-overrides
 
         # Reject negative values for fields that must be non-negative
-        for key in ['fill_gpm', 'dewater_gpm', 'cfm', 'od', 'min_p', 'smys_threshold', 'min_excess', 'window_upper', 'head_factor']:
+        for key in ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'smys_threshold', 'min_excess', 'window_upper', 'head_factor']:
             val = form_dict.get(key)
             if val is not None and isinstance(val, (int, float)) and val < 0:
                 form_dict[key] = p.get(key)
@@ -926,6 +1332,13 @@ def results():
             p['fill_site'] = max(p['start'], p['end'])
         session['params'] = p  # Persist the update
 
+    # Infer NPS from OD for sessions saved before NPS was added
+    if 'nps' not in p and 'od' in p:
+        inferred = od_to_nps(p['od'])
+        if inferred:
+            p['nps'] = inferred
+            session['params'] = p
+
     # Validate required params before calculation
     required_keys = ['od', 'min_p', 'start', 'end', 'test_site']
     missing = [k for k in required_keys if k not in p or p[k] is None]
@@ -940,7 +1353,7 @@ def results():
         smys = grade_smys[grade]
         head_factor = float(p.get('head_factor', 0.433))
         sheet = col_map.get('sheet', 0) if col_map else 0
-        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
+        app_logic = PipelineApp(file_path, od=get_od(p), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, col_map)
 
         # Moved prepack_time calc here
@@ -966,7 +1379,6 @@ def results():
 
         portfolios = load_portfolios()
         save_id = session.get('save_id')
-        saves = load_all_saves()
         # Load version info for the current save if one is loaded
         current_save = None
         if save_id:
@@ -974,6 +1386,11 @@ def results():
             if os.path.exists(sf):
                 with open(sf) as f:
                     current_save = json.load(f)
+        # When inside a saved analysis, only show that analysis in the sidebar list
+        if save_id and current_save:
+            saves = [current_save]
+        else:
+            saves = load_all_saves()
         # Squeeze volume: gallons to pressurize from 0 to target gauge
         squeeze_vol = None
         try:
@@ -982,7 +1399,7 @@ def results():
             weighted_wt = sum(abs(pts.loc[i+1,'Station'] - pts.loc[i,'Station']) * (pts.loc[i,'WT'] + pts.loc[i+1,'WT']) / 2 for i in range(len(pts)-1))
             avg_wt = weighted_wt / total_len if total_len > 0 else None
             if avg_wt and total_len > 0:
-                od = float(p['od'])
+                od = get_od(p)
                 pipe_id = od - 2 * avg_wt
                 C_water = 1 / 300000
                 unrestrained = float(p.get('unrestrained_length') or 0)
@@ -1032,6 +1449,7 @@ def save_analysis():
         return redirect(url_for('results', save_error='1'))
     file_path = session.get('file_path', DEMO_FILE)
 
+    old_test_data = old_test_history = None
     if overwrite_id:
         # Overwrite existing save — keep same id and data file path, push old state to history
         save_id = overwrite_id
@@ -1045,6 +1463,9 @@ def save_analysis():
             existing_data_file = old.get('file_path')
             old_history = old.get('history', [])
             old_version = old.get('version', 1)
+            # Preserve test execution data so analysis updates don't wipe it
+            old_test_data    = old.get('test_data')
+            old_test_history = old.get('test_history')
             # Snapshot the old version into history
             old_history.append({
                 'version': old_version,
@@ -1099,6 +1520,13 @@ def save_analysis():
         'history': history,
         'owner_sub': session.get('user', {}).get('sub'),
     }
+
+    # Re-attach test execution data when overwriting so it survives analysis updates
+    if overwrite_id:
+        if old_test_data:
+            save_data['test_data'] = old_test_data
+        if old_test_history:
+            save_data['test_history'] = old_test_history
 
     safe_write_json(os.path.join(SAVES_DIR, f'{save_id}.json'), save_data)
 
@@ -1200,7 +1628,7 @@ def print_view():
         smys = grade_smys[grade]
         head_factor = float(p.get('head_factor', 0.433))
         sheet = col_map.get('sheet', 0) if col_map else 0
-        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
+        app_logic = PipelineApp(file_path, od=get_od(p), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, col_map)
 
         atm = 14.7
@@ -1249,7 +1677,7 @@ def pv_plot(save_id):
         smys = grade_smys.get(p.get('grade', 'X70'), 70000)
         head_factor = float(p.get('head_factor', 0.433))
         sheet = pv_col_map.get('sheet', 0)
-        app_logic = PipelineApp(file_path, od=float(p["od"]), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
+        app_logic = PipelineApp(file_path, od=get_od(p), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, pv_col_map)
         total_volume_gal = round(sec.volume_gal, 1)
         # Length-weighted average wall thickness (same weighting as volume calc)
@@ -1291,6 +1719,7 @@ def pv_plot(save_id):
         gauge_upper=gauge_upper,
         pv_data=data.get('pv_data', {}),
         unrestrained_length=p.get('unrestrained_length') or 0,
+        from_exec=request.args.get('from') == 'exec',
     )
 
 @app.route('/pv/<save_id>/save', methods=['POST'])
@@ -1319,5 +1748,204 @@ def pv_save(save_id):
     log_action('PV_SAVE', f'id={save_id} name="{data.get("name", "")}" rows={rows}')
     return jsonify({'status': 'ok'})
 
+@app.route('/test/<save_id>')
+@login_required
+def test_execution(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return "Save not found.", 404
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+    p = data.get('params', {})
+    avg_wt = None
+    k_factor = None
+    target_gauge = gauge_lower = gauge_upper = None
+    total_length_ft = None
+    test_site_elev = high_elev = low_elev = None
+    try:
+        file_path = data.get('file_path', DEMO_FILE)
+        col_map = data.get('col_map', {})
+        smys = grade_smys.get(p.get('grade', 'X70'), 70000)
+        head_factor = float(p.get('head_factor', 0.433))
+        sheet = col_map.get('sheet', 0)
+        app_logic = PipelineApp(file_path, od=get_od(p), smys=smys, head_factor=head_factor,
+                                _df=get_cached_df(file_path, sheet=sheet))
+        sec = Section(app_logic, p, col_map)
+        pts = sec.points.sort_values('Station').reset_index(drop=True)
+        total_len = 0.0; weighted_wt = 0.0
+        for i in range(len(pts) - 1):
+            seg_len = abs(float(pts.loc[i+1, 'Station']) - float(pts.loc[i, 'Station']))
+            seg_wt  = (float(pts.loc[i, 'WT']) + float(pts.loc[i+1, 'WT'])) / 2
+            weighted_wt += seg_len * seg_wt
+            total_len   += seg_len
+        if total_len > 0:
+            avg_wt = round(weighted_wt / total_len, 4)
+        total_length_ft = round(sec.length, 0)
+        target_gauge = round(sec.target_gauge, 0)
+        gauge_lower  = round(sec.gauge_lower, 0)
+        gauge_upper  = round(sec.gauge_upper, 0)
+        if avg_wt:
+            k_factor = temp_correction_factor(get_od(p), avg_wt)
+        # Elevations for MAOP certification
+        test_site_station = float(p.get('test_site', 0))
+        dists = (pts['Station'] - test_site_station).abs()
+        test_site_elev = round(float(pts.loc[dists.idxmin(), 'Elevation']), 1)
+        high_elev = round(float(pts['Elevation'].max()), 1)
+        low_elev  = round(float(pts['Elevation'].min()), 1)
+    except Exception:
+        pass
+    portfolios = load_portfolios()
+    pf_name = next((pf['name'] for pf in portfolios if pf['id'] == data.get('portfolio_id')), None)
+    td = data.get('test_data', {})
+    test_attempt = len(data.get('test_history', [])) + 1
+    return render_template('test_exec.html',
+        save_id=save_id,
+        save_name=data.get('name', 'Untitled'),
+        portfolio_name=pf_name,
+        p=p,
+        avg_wt=avg_wt,
+        total_length_ft=total_length_ft,
+        k_factor=k_factor,
+        target_gauge=target_gauge,
+        gauge_lower=gauge_lower,
+        gauge_upper=gauge_upper,
+        test_data=td,
+        test_status=td.get('status'),
+        test_attempt=test_attempt,
+        test_site_elev=test_site_elev,
+        high_elev=high_elev,
+        low_elev=low_elev,
+        governing_code=data.get('project_info', {}).get('governing_code', ''),
+        pv_data=data.get('pv_data', {}),
+    )
+
+
+@app.route('/test/<save_id>/save', methods=['POST'])
+@login_required
+def test_save(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return jsonify({'error': 'Save not found'}), 404
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+    payload = request.get_json()
+    if payload is None:
+        return jsonify({'error': 'Invalid JSON'}), 400
+    if not isinstance(payload.get('readings'), list):
+        return jsonify({'error': 'Missing readings array'}), 400
+    if data.get('test_data', {}).get('status') in ('pass', 'fail'):
+        return jsonify({'error': 'Test is finalized', 'code': 'finalized'}), 409
+    payload['last_updated'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    data['test_data'] = payload
+    safe_write_json(save_file, data)
+    log_action('TEST_SAVE', f'id={save_id} rows={len(payload["readings"])}')
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/test/<save_id>/finalize', methods=['POST'])
+@login_required
+def test_finalize(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return jsonify({'error': 'Save not found'}), 404
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+    payload = request.get_json()
+    status = (payload or {}).get('status')
+    if status not in ('pass', 'fail'):
+        return jsonify({'error': 'Invalid status'}), 400
+    td = data.get('test_data', {})
+    if td.get('status') in ('pass', 'fail'):
+        return jsonify({'error': 'Already finalized'}), 409
+    td['status'] = status
+    td['finalized_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    data['test_data'] = td
+    safe_write_json(save_file, data)
+    log_action('TEST_FINALIZE', f'id={save_id} status={status}')
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/test/<save_id>/unlock', methods=['POST'])
+@admin_required
+def test_unlock(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return jsonify({'error': 'Save not found'}), 404
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+    td = data.get('test_data', {})
+    if td.get('status') not in ('pass', 'fail'):
+        return jsonify({'error': 'Test is not finalized'}), 409
+    td.pop('status', None)
+    td.pop('finalized_at', None)
+    data['test_data'] = td
+    safe_write_json(save_file, data)
+    log_action('TEST_UNLOCK', f'id={save_id} by={session["user"].get("email")}')
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/test/<save_id>/pv/unlink', methods=['POST'])
+@login_required
+def test_pv_unlink(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return jsonify({'error': 'Save not found'}), 404
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+    if data.get('test_data', {}).get('status') in ('pass', 'fail'):
+        return jsonify({'error': 'Test is finalized — unlock before unlinking PV data'}), 409
+    data.pop('pv_data', None)
+    safe_write_json(save_file, data)
+    log_action('PV_UNLINK', f'id={save_id}')
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/test/<save_id>/retest', methods=['POST'])
+@login_required
+def test_retest(save_id):
+    validate_save_id(save_id)
+    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+    if not os.path.exists(save_file):
+        return jsonify({'error': 'Save not found'}), 404
+    with open(save_file) as f:
+        data = json.load(f)
+    check_portfolio_access(data)
+    td = data.get('test_data', {})
+    if td.get('status') != 'fail':
+        return jsonify({'error': 'Can only retest a failed test'}), 400
+    history = data.get('test_history', [])
+    history.insert(0, td)
+    data['test_history'] = history
+    data['test_data'] = {
+        'readings': [],
+        'test_date': None,
+        'timezone': td.get('timezone'),
+        'last_updated': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+    }
+    safe_write_json(save_file, data)
+    log_action('TEST_RETEST', f'id={save_id} attempt={len(history) + 1}')
+    return jsonify({'status': 'ok'})
+
+
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='PES Hydrotest Tool')
+    parser.add_argument('--dev', action='store_true', help='Dev mode: use ref/ folder for reference docs')
+    args = parser.parse_args()
+
+    if args.dev:
+        DEV_MODE = True
+        DOCS_DIR = os.path.join(_APP_DIR, 'ref')
+        logger.info('DEV MODE — reference docs: ref/')
+
     app.run(host='0.0.0.0', port=5000, debug=True)

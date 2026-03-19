@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>PV Plot — {{ save_name }}</title>
+    <link rel="stylesheet" href="/static/tooltips.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root { --sidebar-width: 380px; --primary-bg: #2c3e50; --accent: #8e44ad; --accent-green: #27ae60; --text-light: #ecf0f1; }
@@ -12,6 +13,8 @@
         /* Sidebar */
         .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
         .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .sidebar-header .logo-link img { max-width: 110px; display: block; }
         .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
         .sidebar-header a:hover { color: white; }
         .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
@@ -77,7 +80,9 @@
 
 <div class="sidebar">
     <div class="sidebar-header">
-        <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
+        <a href="/" class="logo-link"><img src="/static/peslogo.png" alt="PES"></a>
+        {% if from_exec %}<a href="/test/{{ save_id }}">&#8592; Return to Execution</a>
+        {% else %}<a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>{% endif %}
         <h2>{{ save_name }}</h2>
         <p>{% if portfolio_name %}{{ portfolio_name }} &nbsp;·&nbsp; {% endif %}PV Plot — Test Execution</p>
     </div>
@@ -85,38 +90,38 @@
     <!-- Pump Setup -->
     <div class="sidebar-section">
         <h3>Pump Setup</h3>
-        <label>Number of Pistons</label>
+        <label><span class="tt" data-tt="Number of active pump cylinders — directly multiplies the swept volume per stroke">Number of Pistons</span></label>
         <input type="number" id="pistons" min="1" max="6" step="1" value="{{ pv_data.pump.pistons if pv_data.pump else 3 }}" oninput="updateGalPerStroke()">
-        <label>Piston Diameter (in)</label>
+        <label><span class="tt" data-tt="Internal bore diameter of each pump cylinder in inches — combined with stroke length gives the swept volume per stroke">Piston Diameter (in)</span></label>
         <input type="number" id="piston_dia" min="0.5" max="20" step="0.01" value="{{ pv_data.pump.piston_diameter if pv_data.pump else '' }}" placeholder="e.g. 4.5" oninput="updateGalPerStroke()">
-        <label>Stroke Length (in)</label>
+        <label><span class="tt" data-tt="Travel distance of each piston in inches — combined with piston diameter gives the swept volume per stroke">Stroke Length (in)</span></label>
         <input type="number" id="stroke_len" min="0.1" max="60" step="0.01" value="{{ pv_data.pump.stroke_length if pv_data.pump else '' }}" placeholder="e.g. 10" oninput="updateGalPerStroke()">
-        <label style="margin-top:10px;">Gallons / Stroke</label>
+        <label style="margin-top:10px;"><span class="tt" data-tt="Calculated pump displacement per stroke = (π/4) × D² × L × n × 0.004329 gal/in³">Gallons / Stroke</span></label>
         <div class="computed-val" id="gal_per_stroke_display">—</div>
     </div>
 
     <!-- Theoretical Slope Inputs -->
     <div class="sidebar-section">
-        <h3>Theoretical Slope</h3>
-        <label>Avg. Wall Thickness (in) <span style="color:#7f8c8d; font-size:0.85em;">— length-weighted from data</span></label>
+        <h3><span class="tt" data-tt="Expected pressure rise per gallon of water pumped — calculated from pipe compressibility, wall thickness, restrained vs. unrestrained footage, and pipe diameter">Theoretical Slope</span></h3>
+        <label><span class="tt" data-tt="Length-weighted average pipe wall thickness across the segment — from the survey data">Avg. Wall Thickness (in)</span> <span style="color:#7f8c8d; font-size:0.85em;">— length-weighted from data</span></label>
         <div class="computed-val">{{ avg_wt if avg_wt else '—' }}</div>
         <label style="margin-top:10px;">Total Pipe Length (ft)</label>
         <div class="computed-val">{{ '{:,.0f}'.format(total_length_ft) if total_length_ft else '—' }}</div>
-        <label style="margin-top:10px;">Unrestrained Length (ft) <span style="color:#7f8c8d; font-size:0.85em;">— above ground / expansion joints</span></label>
+        <label style="margin-top:10px;"><span class="tt" data-tt="Footage of pipe free to expand longitudinally — above-ground sections and expansion joints. More unrestrained pipe lowers the theoretical compressibility slope.">Unrestrained Length (ft)</span> <span style="color:#7f8c8d; font-size:0.85em;">— above ground / expansion joints</span></label>
         <input type="number" id="unrestrained_length" min="0" step="1"
             value="{{ pv_data.unrestrained_length if (pv_data.unrestrained_length is defined and pv_data.unrestrained_length != None) else (unrestrained_length if unrestrained_length else '') }}"
             placeholder="0" oninput="updateChart()">
-        <label style="margin-top:6px;">Restrained Length (ft)</label>
+        <label style="margin-top:6px;"><span class="tt" data-tt="Buried or otherwise fixed pipe footage — longitudinal expansion is constrained, yielding a steeper theoretical slope">Restrained Length (ft)</span></label>
         <div class="computed-val" id="restrained_length_display">—</div>
-        <label style="margin-top:10px;">Total Pipeline Volume (gal)</label>
+        <label style="margin-top:10px;"><span class="tt" data-tt="Total geometric water volume of the full segment based on inside diameter and length">Total Pipeline Volume (gal)</span></label>
         <div class="computed-val">{{ total_volume_gal if total_volume_gal else '—' }}</div>
-        <label style="margin-top:8px;">Theoretical Slope</label>
+        <label style="margin-top:8px;"><span class="tt" data-tt="Expected pressure rise per gallon pumped (psi/gal) — plotted as the reference line on the P-V chart">Theoretical Slope</span></label>
         <div class="computed-val" id="theoretical_slope_display">—</div>
         {% if target_gauge %}
-        <label style="margin-top:10px;">Target Gauge Pressure (test site)</label>
+        <label style="margin-top:10px;"><span class="tt" data-tt="The required test pressure at the test site gauge — all readings are compared against this target">Target Gauge Pressure (test site)</span></label>
         <div class="computed-val">{{ target_gauge | int }} psig &nbsp;<span style="color:#7f8c8d; font-size:0.85em;">(window {{ gauge_lower | int }}–{{ gauge_upper | int }} psig)</span></div>
         {% endif %}
-        <label style="margin-top:8px;">Expected Squeeze Volume</label>
+        <label style="margin-top:8px;"><span class="tt" data-tt="Calculated additional water volume needed to pressurize the filled pipe to the target gauge pressure — accounts for pipe wall expansion and water compressibility">Expected Squeeze Volume</span></label>
         <div class="computed-val" id="squeeze_vol_display">—</div>
     </div>
 
@@ -124,6 +129,9 @@
     <div class="sidebar-section" style="border-bottom:none; margin-top:auto;">
         <button class="btn btn-green" onclick="saveData()" style="margin-bottom:6px;">Save PV Data</button>
         <div class="save-status" id="save_status"></div>
+        {% if from_exec %}
+        <button class="btn btn-primary" onclick="returnToExecution()" style="margin-top:8px;">&#8592; Return to Execution</button>
+        {% endif %}
         <button class="btn btn-danger" onclick="clearReadings()" style="margin-top:8px;">Clear All Readings</button>
     </div>
 </div>
@@ -163,11 +171,11 @@
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Cumulative Strokes</th>
+                    <th><span class="tt tt-c" data-tt="Total pump strokes since the start of the reading sequence">Cumulative Strokes</span></th>
                     <th>Pressure (PSI)</th>
                     <th>Sec</th>
-                    <th>SPM</th>
-                    <th>Cumul. Volume (gal)</th>
+                    <th><span class="tt tt-c" data-tt="Strokes Per Minute — pump speed at the time of this reading">SPM</span></th>
+                    <th><span class="tt tt-c" data-tt="Total water volume pumped since the start, calculated from cumulative strokes × gallons per stroke">Cumul. Volume (gal)</span></th>
                     <th></th>
                 </tr>
             </thead>
@@ -578,7 +586,7 @@ function updateChart() {
 }
 
 // --- Save / Clear ---
-function saveData() {
+function saveData(onComplete) {
     const gps = getGalPerStroke();
     const rows = [];
     document.querySelectorAll('#readings_body tr').forEach(row => {
@@ -606,7 +614,36 @@ function saveData() {
         if (d.status === 'ok') { status.textContent = 'Saved ✓'; status.className = 'save-status ok'; }
         else { status.textContent = 'Error saving'; status.className = 'save-status err'; }
         setTimeout(() => status.textContent = '', 3000);
-    }).catch(() => { status.textContent = 'Error saving'; status.className = 'save-status err'; });
+        if (onComplete) onComplete(d.status === 'ok');
+    }).catch(() => {
+        status.textContent = 'Error saving'; status.className = 'save-status err';
+        if (onComplete) onComplete(false);
+    });
+}
+
+function returnToExecution() {
+    const params = new URLSearchParams(window.location.search);
+    const startStr = params.get('start');
+    let endTime = null;
+    if (startStr) {
+        let totalSecs = 0;
+        document.querySelectorAll('#readings_body tr').forEach(row => {
+            const s = parseFloat(row.querySelector('.seconds-input').value);
+            if (!isNaN(s) && s > 0) totalSecs += s;
+        });
+        if (totalSecs > 0) {
+            const [h, m] = startStr.split(':').map(Number);
+            const endTotalSecs = h * 3600 + m * 60 + totalSecs;
+            const eh = Math.floor(endTotalSecs / 3600) % 24;
+            const em = Math.floor((endTotalSecs % 3600) / 60);
+            endTime = String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+        }
+    }
+    saveData(function() {
+        let url = '/test/' + SAVE_ID;
+        if (endTime) url += '?pv_end=' + encodeURIComponent(endTime);
+        window.location.href = url;
+    });
 }
 
 function clearReadings() {

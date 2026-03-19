@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rupture Analysis — {{ save_name }}</title>
+    <link rel="stylesheet" href="/static/tooltips.css">
+    <script src="/static/plotly-2.35.2.min.js"></script>
+    <style>
+        :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent: #e74c3c; --accent-green: #27ae60; --text-light: #ecf0f1; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+
+        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .sidebar-header .logo-link img { max-width: 110px; display: block; }
+        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
+        .sidebar-header a:hover { color: white; }
+        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
+        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; }
+        label { display: block; font-size: 0.82em; color: #bdc3c7; margin-bottom: 3px; margin-top: 10px; }
+        label:first-child { margin-top: 0; }
+        input[type="text"], input[type="number"] {
+            width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64;
+            color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit;
+        }
+        select {
+            width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64;
+            color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit;
+            appearance: none; -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2395a5a6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 10px center;
+            padding-right: 28px; cursor: pointer;
+        }
+        select option { background: #2c3e50; }
+        input:focus, select:focus { outline: none; border-color: var(--accent); }
+        .btn { display: block; width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; font-family: inherit; }
+        .btn-danger { background: var(--accent); color: white; }
+        .btn-back { background: #455a64; color: white; text-decoration: none; margin-top: 8px; }
+        .btn-save { background: var(--accent-green); color: white; }
+        .btn-muted { background: #455a64; color: white; }
+        .btn:hover { opacity: 0.88; }
+        .saved-ra { padding: 8px 0; border-bottom: 1px solid #3d5166; }
+        .saved-ra:last-child { border-bottom: none; }
+        .saved-ra-label { font-size: 0.88em; font-weight: 600; color: #ecf0f1; }
+        .saved-ra-meta { font-size: 0.75em; color: #7f8c8d; margin: 2px 0 4px; }
+        .saved-ra-stats { font-size: 0.82em; margin-bottom: 4px; }
+        .saved-ra-load { font-size: 0.78em; color: #3498db; text-decoration: none; }
+        .saved-ra-load:hover { color: #5dade2; }
+        .saved-ra-actions { display: flex; align-items: center; gap: 10px; }
+        .btn-del-ra { background: none; border: none; color: #7f8c8d; cursor: pointer; font-size: 0.78em; padding: 0; font-family: inherit; }
+        .btn-del-ra:hover { color: #e74c3c; }
+        .btn-rename-ra { background: none; border: none; color: #7f8c8d; cursor: pointer; font-size: 0.78em; padding: 0; font-family: inherit; }
+        .btn-rename-ra:hover { color: #f39c12; }
+        .rename-form { display: none; margin-top: 6px; }
+        .rename-form input { font-size: 0.82em; padding: 5px 7px; margin-bottom: 5px; }
+        .rename-row { display: flex; gap: 5px; }
+        .rename-row button { flex: 1; padding: 4px 6px; font-size: 0.78em; border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-weight: 600; }
+        .btn-rename-save { background: #27ae60; color: white; }
+        .btn-rename-cancel { background: #455a64; color: white; }
+        .hint { font-size: 0.75em; color: #7f8c8d; margin-top: 4px; }
+        .param-row { display: flex; justify-content: space-between; font-size: 0.82em; padding: 4px 0; border-bottom: 1px solid #3d5166; }
+        .param-row:last-child { border-bottom: none; }
+        .param-label { color: #95a5a6; }
+        .param-val { color: white; font-weight: 600; text-align: right; }
+
+        /* Station list */
+        .stn-list { margin-bottom: 8px; }
+        .stn-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+        .stn-row input { flex: 1; margin: 0; }
+        .stn-row .btn-remove { width: 28px; min-width: 28px; padding: 0; height: 28px; font-size: 1.1em; line-height: 28px; background: #c0392b; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; flex-shrink: 0; }
+        .stn-row .btn-remove:hover { opacity: 0.85; }
+        .btn-add-stn { background: none; border: 1px dashed #455a64; color: #95a5a6; font-size: 0.82em; padding: 6px; cursor: pointer; border-radius: 4px; width: 100%; font-family: inherit; margin-top: 2px; }
+        .btn-add-stn:hover { border-color: #27ae60; color: #27ae60; }
+
+        .main { margin-left: var(--sidebar-width); flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+        .chart-box { background: #16213e; border-radius: 8px; padding: 20px; }
+        .chart-box h3 { margin: 0 0 14px; font-size: 0.95em; color: #bdc3c7; text-transform: uppercase; letter-spacing: 0.5px; }
+        #rupture-chart { height: 380px; }
+
+        .results-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .result-card { background: #16213e; border-radius: 8px; padding: 18px 20px; }
+        .result-card h4 { margin: 0 0 14px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.6px; color: #95a5a6; }
+        .vol-primary { font-size: 1.5em; font-weight: 700; margin-bottom: 4px; }
+        .vol-secondary { font-size: 0.82em; color: #7f8c8d; }
+        .released { color: #e74c3c; }
+        .retained { color: #27ae60; }
+        .neutral { color: #3498db; }
+
+        .stats-box { background: #16213e; border-radius: 8px; padding: 18px 20px; }
+        .stats-box h4 { margin: 0 0 14px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.6px; color: #95a5a6; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 0.85em; padding: 6px 0; border-bottom: 1px solid #1a252f; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #95a5a6; }
+        .stat-val { font-weight: 600; font-family: monospace; }
+
+        .section-title { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.6px; color: #95a5a6; margin: 0 0 12px; }
+
+        .per-rupture-grid { display: grid; gap: 12px; }
+        .per-rupture-card { background: #1a2a3a; border-radius: 6px; padding: 14px 16px; border-left: 3px solid #e74c3c; }
+        .per-rupture-card h5 { margin: 0 0 8px; font-size: 0.85em; }
+        .per-rupture-card .stat-row { border-bottom-color: #0d1a26; }
+
+        .error-box { background: #2c1a1a; border: 1px solid #e74c3c; border-radius: 6px; padding: 14px 16px; color: #e74c3c; font-size: 0.88em; }
+
+        .empty-state { text-align: center; padding: 80px 20px; color: #455a64; }
+        .empty-state svg { width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.4; }
+        .empty-state p { font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <a href="/" class="logo-link"><img src="/static/peslogo.png" alt="PES"></a>
+        <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
+        <h2>Rupture Analysis</h2>
+        <p>{{ save_name }}</p>
+    </div>
+
+    <div class="sidebar-section">
+        <h3>Rupture Station(s)</h3>
+        <form method="POST" id="rup-form">
+            <input type="hidden" name="ra_id" id="ra-id-input" value="{{ loaded_ra_id }}">
+            <label><span class="tt" data-tt="Station along the pipeline at which the hypothetical full-bore rupture occurs — the analysis calculates how much fluid drains to this point">Rupture Station(s) (ft or 00+00)</span></label>
+            <div class="stn-list" id="stn-list">
+                {% for s in rup_station_inputs %}
+                <div class="stn-row">
+                    <input type="text" name="rup_station" value="{{ s }}" placeholder="e.g. 330+44" required>
+                    <button type="button" class="btn-remove" onclick="removeStn(this)" title="Remove">&#215;</button>
+                </div>
+                {% else %}
+                <div class="stn-row">
+                    <input type="text" name="rup_station" value="" placeholder="e.g. 330+44" required autofocus>
+                    <button type="button" class="btn-remove" onclick="removeStn(this)" title="Remove">&#215;</button>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn-add-stn" onclick="addStn()">&#43; Add Rupture Point</button>
+            <div class="hint" style="margin-top:6px;">
+                Section: {{ section_start | station_format }} — {{ section_end | station_format }}
+            </div>
+
+            <label style="margin-top:14px;"><span class="tt" data-tt="Fluid specific weight (lb/ft³) determines hydrostatic head per foot of elevation — heavier fluids exert more pressure and drain more aggressively">Fluid</span></label>
+            <select id="sw-select" onchange="onSwChange(this)">
+                <option value="62.4">Fresh Water (62.4 lb/ft³)</option>
+                <option value="64.0">Seawater (64.0 lb/ft³)</option>
+                <option value="55.0">Crude Oil — Light (55.0 lb/ft³)</option>
+                <option value="57.0">Crude Oil — Medium (57.0 lb/ft³)</option>
+                <option value="59.0">Crude Oil — Heavy (59.0 lb/ft³)</option>
+                <option value="53.5">Diesel (53.5 lb/ft³)</option>
+                <option value="47.0">Gasoline (47.0 lb/ft³)</option>
+                <option value="custom">Custom...</option>
+            </select>
+            <div id="sw-custom-row" style="display:none; margin-top:6px;">
+                <label><span class="tt" data-tt="Fluid density in pounds per cubic foot — used to calculate hydrostatic head pressure (psi/ft)">Custom Specific Weight (lb/ft³)</span></label>
+                <input type="number" id="sw-custom-input" step="0.1" min="20" max="100" placeholder="e.g. 56.0">
+            </div>
+            <input type="hidden" name="specific_weight" id="sw-value" value="{{ specific_weight }}">
+
+            <button type="submit" class="btn btn-danger" style="margin-top:14px;">Run Analysis</button>
+        </form>
+        <a href="/load/{{ save_id }}" class="btn btn-back">Cancel</a>
+    </div>
+
+    <div class="sidebar-section">
+        <h3>Pipe Properties</h3>
+        {% if nps %}<div class="param-row"><span class="param-label">NPS</span><span class="param-val">{{ nps }}"</span></div>{% endif %}
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Outside Diameter per API 5L for the selected NPS — used to calculate pipe area and SMYS pressure limits">OD</span></span><span class="param-val">{{ "%.3f"|format(od) }}"</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Length-weighted average wall thickness across the segment">Avg Wall Thickness</span></span><span class="param-val">{{ avg_wt }}"</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Inside Diameter — calculated as OD minus twice the wall thickness">ID</span></span><span class="param-val">{{ "%.3f"|format(od - 2*avg_wt) }}"</span></div>
+    </div>
+
+    {% if result %}
+    <div class="sidebar-section">
+        <h3>Rupture Conditions</h3>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Ground elevation at the rupture point — after a full-bore rupture, the fluid surface at the break settles to this elevation">Rupture Elevation</span></span><span class="param-val">{{ "%.1f"|format(result.rup_elev) }} ft</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Atmospheric pressure in psi at the rupture elevation — approximately 14.7 psi at sea level, decreasing slightly with altitude">Atm Pressure</span></span><span class="param-val">{{ "%.2f"|format(result.atm_psi) }} psi</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Height of fluid column exerting a pressure equal to atmospheric pressure — determines how far above the rupture elevation the pipe will drain">Atmospheric Head</span></span><span class="param-val">{{ "%.1f"|format(result.hydraulic_head_ft) }} ft</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Elevation equal to rupture elevation plus atmospheric head — pipe above this stays full (retained); pipe between rupture elevation and this threshold partially drains">Atm Head Elevation</span></span><span class="param-val">{{ "%.1f"|format(result.threshold_elev) }} ft</span></div>
+    </div>
+    {% elif multi_result %}
+    <div class="sidebar-section">
+        <h3>Multi-Rupture Summary</h3>
+        {% for r in multi_result.per_rupture %}
+        <div class="param-row">
+            <span class="param-label">Rupture {{ loop.index }} Elev</span>
+            <span class="param-val">{{ "%.1f"|format(r.rup_elev) }} ft</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if result or multi_result %}
+    <div class="sidebar-section">
+        {% if loaded_ra_id %}
+        <h3>Analysis Loaded</h3>
+        <form method="POST" action="/rupture/{{ save_id }}/save">
+            {% for s in rup_station_inputs %}
+            <input type="hidden" name="rup_station" value="{{ s }}">
+            {% endfor %}
+            <input type="hidden" name="specific_weight" value="{{ specific_weight }}">
+            <input type="hidden" name="ra_id" value="{{ loaded_ra_id }}">
+            <input type="hidden" name="label" value="{{ loaded_ra.label if loaded_ra else 'Unnamed' }}">
+            <button type="submit" class="btn btn-save" style="margin-bottom:8px;">&#8635; Update "{{ loaded_ra.label if loaded_ra else 'Analysis' }}"</button>
+        </form>
+        <form method="POST" action="/rupture/{{ save_id }}/save">
+            {% for s in rup_station_inputs %}
+            <input type="hidden" name="rup_station" value="{{ s }}">
+            {% endfor %}
+            <input type="hidden" name="specific_weight" value="{{ specific_weight }}">
+            <label>Label for new save</label>
+            <input type="text" name="label" placeholder="e.g. Alternate scenario" style="margin-bottom:8px;">
+            <button type="submit" class="btn btn-muted">&#43; Save as New</button>
+        </form>
+        {% else %}
+        <h3>Save This Analysis</h3>
+        <form method="POST" action="/rupture/{{ save_id }}/save">
+            {% for s in rup_station_inputs %}
+            <input type="hidden" name="rup_station" value="{{ s }}">
+            {% endfor %}
+            <input type="hidden" name="specific_weight" value="{{ specific_weight }}">
+            <label>Label</label>
+            <input type="text" name="label" placeholder="e.g. Worst-case scenario" style="margin-bottom:10px;">
+            <button type="submit" class="btn btn-save">&#128190; Save Analysis</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if rupture_analyses %}
+    <div class="sidebar-section">
+        <h3>Saved Analyses</h3>
+        {% for ra in rupture_analyses | reverse %}
+        <div class="saved-ra">
+            <div class="saved-ra-label">
+                {{ ra.label }}
+                {% if ra.get('mode') == 'multi' %}<span style="font-size:0.72em; background:#2d4a6b; color:#7fc6f5; padding:1px 5px; border-radius:3px; margin-left:4px;">multi</span>{% endif %}
+            </div>
+            <div class="saved-ra-meta">
+                {% if ra.get('mode') == 'multi' %}
+                    {{ ra.rup_station | join(' · ') if ra.rup_station is iterable and ra.rup_station is not string else ra.rup_station }}
+                {% else %}
+                    {{ ra.rup_station }}
+                {% endif %}
+            </div>
+            <div class="saved-ra-meta" style="font-size:0.72em; color:#7f8c8d;">
+                Saved by {{ ra.get('saved_by', '—') }}
+                &nbsp;·&nbsp; <span class="local-time" data-utc="{{ ra.saved_at }}">{{ ra.saved_at }}</span>
+                {% if ra.get('modified_at') %}
+                <br>Modified by {{ ra.get('modified_by', '—') }}
+                &nbsp;·&nbsp; <span class="local-time" data-utc="{{ ra.modified_at }}">{{ ra.modified_at }}</span>
+                {% endif %}
+            </div>
+            <div class="saved-ra-stats">
+                <span class="released">{{ "{:,.0f}".format(ra.results.total_released_gal) }} gal</span>
+                <span style="color:#95a5a6;">&nbsp;({{ ra.results.pct_released }}%)</span>
+            </div>
+            <div class="saved-ra-actions">
+                {% if ra.get('mode') == 'multi' %}
+                    {% set stns = ra.rup_station if ra.rup_station is iterable and ra.rup_station is not string else [ra.rup_station] %}
+                    <a href="/rupture/{{ save_id }}?{% for s in stns %}rup_station={{ s | urlencode }}&{% endfor %}specific_weight={{ ra.specific_weight }}&ra_id={{ ra.id }}" class="saved-ra-load">Load &#8594;</a>
+                {% else %}
+                    <a href="/rupture/{{ save_id }}?rup_station={{ ra.rup_station | urlencode }}&specific_weight={{ ra.specific_weight }}&ra_id={{ ra.id }}" class="saved-ra-load">Load &#8594;</a>
+                {% endif %}
+                <button type="button" class="btn-rename-ra" onclick="toggleRename('{{ ra.id }}')">&#9998; Rename</button>
+                <form method="POST" action="/rupture/{{ save_id }}/delete_ra" style="margin:0;" onsubmit="return confirm('Delete this analysis?')">
+                    <input type="hidden" name="ra_id" value="{{ ra.id }}">
+                    <button type="submit" class="btn-del-ra">&#128465; Delete</button>
+                </form>
+            </div>
+            <form method="POST" action="/rupture/{{ save_id }}/rename_ra" class="rename-form" id="rename-{{ ra.id }}">
+                <input type="hidden" name="ra_id" value="{{ ra.id }}">
+                <input type="text" name="label" value="{{ ra.label }}" required>
+                <div class="rename-row">
+                    <button type="submit" class="btn-rename-save">Save</button>
+                    <button type="button" class="btn-rename-cancel" onclick="toggleRename('{{ ra.id }}')">Cancel</button>
+                </div>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="main">
+
+{% if error %}
+<div class="error-box">&#9888; {{ error }}</div>
+{% endif %}
+
+{% if result %}
+
+<div class="results-grid">
+    <div class="result-card">
+        <h4><span class="tt" data-tt="Total fluid volume that drains from the pipeline through the rupture point — the sum of upstream and downstream released volumes">Total Released</span></h4>
+        <div class="vol-primary released">{{ "{:,.0f}".format(result.total_released_gal) }} gal</div>
+        <div class="vol-secondary">{{ "{:,.1f}".format(result.total_released_bbl) }} bbl &nbsp;|&nbsp; {{ "{:,.0f}".format(result.total_released_ft3) }} ft³</div>
+        <div class="vol-secondary" style="margin-top:6px; font-size:0.9em; color:#e74c3c;">{{ result.pct_released }}% of section volume</div>
+    </div>
+    <div class="result-card">
+        <h4><span class="tt" data-tt="Volume released from the pipe segment on the upstream (higher stationing) side of the rupture — includes all pipe that drains toward the break">Upstream Released</span></h4>
+        <div class="vol-primary released">{{ "{:,.0f}".format(result.upstream_released_gal) }} gal</div>
+        <div class="vol-secondary">{{ "{:,.1f}".format(result.upstream_released_bbl) }} bbl &nbsp;|&nbsp; {{ "{:,.1f}".format(result.upstream_drained_ft) }} ft drained</div>
+    </div>
+    <div class="result-card">
+        <h4><span class="tt" data-tt="Volume released from the pipe segment on the downstream (lower stationing) side of the rupture — includes all pipe that drains toward the break">Downstream Released</span></h4>
+        <div class="vol-primary released">{{ "{:,.0f}".format(result.downstream_released_gal) }} gal</div>
+        <div class="vol-secondary">{{ "{:,.1f}".format(result.downstream_released_bbl) }} bbl &nbsp;|&nbsp; {{ "{:,.1f}".format(result.downstream_drained_ft) }} ft drained</div>
+    </div>
+</div>
+
+<div class="chart-box">
+    <h3>Elevation Profile — Drain Analysis</h3>
+    <div id="rupture-chart"></div>
+</div>
+
+<div class="results-grid">
+    <div class="stats-box">
+        <h4><span class="tt" data-tt="Geometric water volumes of the full segment and each side of the rupture — based on pipe inside diameter and length">Section Volumes</span></h4>
+        <div class="stat-row"><span class="stat-label">Total Section</span><span class="stat-val neutral">{{ "{:,.0f}".format(result.total_vol_gal) }} gal</span></div>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Total geometric volume of the pipe on the upstream (higher stationing) side of the rupture">Upstream of Rupture</span></span><span class="stat-val neutral">{{ "{:,.0f}".format(result.upstream_vol_gal) }} gal</span></div>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Total geometric volume of the pipe on the downstream (lower stationing) side of the rupture">Downstream of Rupture</span></span><span class="stat-val neutral">{{ "{:,.0f}".format(result.downstream_vol_gal) }} gal</span></div>
+    </div>
+    <div class="stats-box">
+        <h4><span class="tt" data-tt="Volume that actually drains to the rupture point — pipe between the rupture elevation and the atmospheric head elevation on each side">Released (gal)</span></h4>
+        <div class="stat-row"><span class="stat-label">Upstream</span><span class="stat-val released">{{ "{:,.0f}".format(result.upstream_released_gal) }} gal</span></div>
+        <div class="stat-row"><span class="stat-label">Downstream</span><span class="stat-val released">{{ "{:,.0f}".format(result.downstream_released_gal) }} gal</span></div>
+        <div class="stat-row"><span class="stat-label">Total</span><span class="stat-val released">{{ "{:,.0f}".format(result.total_released_gal) }} gal</span></div>
+    </div>
+    <div class="stats-box">
+        <h4><span class="tt" data-tt="Fluid that stays in the pipe — stations above the atmospheric head elevation remain full and do not drain to the rupture">Retained in Pipe</span></h4>
+        <div class="stat-row"><span class="stat-label">Volume Retained</span><span class="stat-val retained">{{ "{:,.0f}".format(result.total_vol_gal - result.total_released_gal) }} gal</span></div>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Retained volume expressed in barrels (1 bbl = 42 US gallons)">Retained (bbl)</span></span><span class="stat-val retained">{{ "{:,.1f}".format((result.total_vol_gal - result.total_released_gal) / 42) }} bbl</span></div>
+        <div class="stat-row"><span class="stat-label">% Retained</span><span class="stat-val retained">{{ "%.1f"|format(100 - result.pct_released) }}%</span></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var stations = {{ result.stations | tojson }};
+    var elevations = {{ result.elevations | tojson }};
+    var drained = {{ result.drained_flags | tojson }};
+    var rupStn = {{ result.rup_station }};
+    var rupElev = {{ result.rup_elev }};
+    var threshold = {{ result.threshold_elev }};
+
+    function stnFmt(s) {
+        var abs = Math.abs(s);
+        var sta = Math.floor(abs / 100);
+        var rem = abs % 100;
+        var remStr = rem === Math.floor(rem) ? String(Math.floor(rem)).padStart(2, '0') : rem.toFixed(2).padStart(5, '0');
+        return (s < 0 ? '-' : '') + sta + '+' + remStr;
+    }
+
+    function buildSegments() {
+        var segs = [];
+        var i = 0;
+        while (i < stations.length) {
+            var isDrained = Boolean(drained[i]);
+            var j = i;
+            while (j < stations.length && Boolean(drained[j]) === isDrained) j++;
+            var start = (i > 0) ? i - 1 : i;
+            var end   = (j < stations.length) ? j : j - 1;
+            segs.push({ isDrained: isDrained, start: start, end: end });
+            i = j;
+        }
+        return segs;
+    }
+
+    var segments = buildSegments();
+    var traces = [];
+
+    // Accumulate all retained / drained points into two merged traces
+    // (null separators create visual breaks without spawning extra hover entries)
+    var retX = [], retY = [], retC = [];
+    var drnX = [], drnY = [], drnC = [];
+
+    segments.forEach(function(seg) {
+        var xs = stations.slice(seg.start, seg.end + 1);
+        var ys = elevations.slice(seg.start, seg.end + 1);
+        if (seg.isDrained) {
+            if (drnX.length) { drnX.push(null); drnY.push(null); drnC.push(null); }
+            drnX = drnX.concat(xs); drnY = drnY.concat(ys);
+            drnC = drnC.concat(xs.map(stnFmt));
+        } else {
+            var leftLevel = ys[0], rightLevel = ys[ys.length - 1];
+            var water = ys.map(function(_, ii) {
+                var t = ys.length > 1 ? ii / (ys.length - 1) : 0;
+                return leftLevel + t * (rightLevel - leftLevel);
+            });
+            traces.push({ x: xs.concat(xs.slice().reverse()), y: water.concat(ys.slice().reverse()),
+                type:'scatter', mode:'none', fill:'toself', fillcolor:'rgba(52,152,219,0.30)',
+                hoverinfo:'skip', showlegend:false });
+            if (retX.length) { retX.push(null); retY.push(null); retC.push(null); }
+            retX = retX.concat(xs); retY = retY.concat(ys);
+            retC = retC.concat(xs.map(stnFmt));
+        }
+    });
+
+    traces.push({ x: retX, y: retY, type:'scatter', mode:'lines',
+        name:'Water Retained', line:{ color:'#3498db', width:2 },
+        hovertemplate:'Stn: %{customdata}<br>Elev: %{y:.1f} ft<extra></extra>',
+        customdata: retC });
+    traces.push({ x: drnX, y: drnY, type:'scatter', mode:'lines',
+        name:'Pipe Drained', line:{ color:'#e74c3c', width:2 },
+        hovertemplate:'Stn: %{customdata}<br>Elev: %{y:.1f} ft<extra></extra>',
+        customdata: drnC });
+
+    // Air-in-line: slack zone where pipe is partially full (water surface at rup_elev, air above)
+    // Stations: drained AND elevation between rup_elev and threshold_elev
+    traces.push({ x:[null], y:[null], type:'scatter', mode:'none',
+        name:'Air in Line', fill:'toself',
+        fillcolor:'rgba(236,204,104,0.22)', line:{color:'rgba(236,204,104,0.5)',width:1},
+        showlegend:true });
+
+    var ai = 0;
+    while (ai < stations.length) {
+        if (!(drained[ai] && elevations[ai] >= rupElev && elevations[ai] <= threshold)) { ai++; continue; }
+        var aj = ai;
+        while (aj < stations.length && drained[aj] && elevations[aj] >= rupElev && elevations[aj] <= threshold) aj++;
+        var axs = stations.slice(ai, aj);
+        var ays = elevations.slice(ai, aj);
+        var floor = axs.map(function() { return rupElev; });
+        traces.push({
+            x: axs.concat(axs.slice().reverse()),
+            y: ays.concat(floor.slice().reverse()),
+            type:'scatter', mode:'none', fill:'toself',
+            fillcolor:'rgba(236,204,104,0.22)',
+            line:{color:'rgba(236,204,104,0.5)', width:1},
+            hoverinfo:'skip', showlegend:false,
+        });
+        traces.push({
+            x: axs, y: floor,
+            type:'scatter', mode:'lines',
+            line:{color:'rgba(236,204,104,0.7)', width:1.5, dash:'dot'},
+            hovertemplate:'Water surface: ' + rupElev.toFixed(1) + ' ft<extra></extra>',
+            showlegend:false,
+        });
+        ai = aj;
+    }
+
+    traces.push({ x: [rupStn], y: [rupElev], type:'scatter', mode:'markers+text',
+        name: 'Rupture @ ' + stnFmt(rupStn),
+        marker: { color: '#e74c3c', size: 12, symbol: 'x' },
+        text: ['Rupture<br>' + stnFmt(rupStn)],
+        textposition: 'top center', textfont: { color: '#e74c3c', size: 11 },
+        hovertemplate: 'Rupture at ' + stnFmt(rupStn) + '<br>Elev: ' + rupElev.toFixed(1) + ' ft<extra></extra>' });
+
+    var range = Math.abs(stations[stations.length-1] - stations[0]);
+    var rawStep = range / 8;
+    var niceSteps = [50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+    var step = niceSteps[niceSteps.length - 1];
+    for (var k = 0; k < niceSteps.length; k++) {
+        if (niceSteps[k] >= rawStep) { step = niceSteps[k]; break; }
+    }
+    var firstTick = Math.ceil(stations[0] / step) * step;
+    var tickvals = [];
+    for (var t = firstTick; t <= stations[stations.length-1]; t += step) tickvals.push(t);
+
+    Plotly.newPlot('rupture-chart', traces, {
+        paper_bgcolor: '#16213e', plot_bgcolor: '#16213e',
+        font: { color: '#ecf0f1', size: 11 },
+        margin: { l: 60, r: 20, t: 10, b: 60 },
+        xaxis: {
+            title: { text: 'Station', font: { size: 11 } },
+            tickmode: 'array', tickvals: tickvals, ticktext: tickvals.map(stnFmt),
+            tickangle: -45, showgrid: true, gridcolor: 'rgba(255,255,255,0.12)', gridwidth: 1,
+            color: '#95a5a6',
+            rangeslider: { visible: true, bgcolor: '#1a1a2e', bordercolor: '#455a64', thickness: 0.08 },
+        },
+        yaxis: {
+            title: { text: 'Elevation (ft)', font: { size: 11 } },
+            showgrid: true, gridcolor: 'rgba(255,255,255,0.12)', gridwidth: 1,
+            color: '#95a5a6', autorange: true, rangemode: 'normal',
+        },
+        legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 11 } },
+        hovermode: 'x unified',
+    }, { responsive: true, displayModeBar: false });
+})();
+</script>
+
+{% elif multi_result %}
+
+{% set mr = multi_result %}
+<div class="results-grid">
+    <div class="result-card">
+        <h4><span class="tt" data-tt="Total fluid volume that drains from the pipeline across all rupture points combined — the union of all drained zones">Combined Released</span></h4>
+        <div class="vol-primary released">{{ "{:,.0f}".format(mr.total_released_gal) }} gal</div>
+        <div class="vol-secondary">{{ "{:,.1f}".format(mr.total_released_bbl) }} bbl &nbsp;|&nbsp; {{ "{:,.0f}".format(mr.total_released_ft3) }} ft³</div>
+        <div class="vol-secondary" style="margin-top:6px; font-size:0.9em; color:#e74c3c;">{{ mr.pct_released }}% of section volume</div>
+    </div>
+    <div class="result-card">
+        <h4><span class="tt" data-tt="Total geometric water volume of the full pipeline segment based on inside diameter and length">Section Volume</span></h4>
+        <div class="vol-primary neutral">{{ "{:,.0f}".format(mr.total_vol_gal) }} gal</div>
+        <div class="vol-secondary">{{ "{:,.1f}".format(mr.total_vol_bbl) }} bbl &nbsp;|&nbsp; {{ "{:,.0f}".format(mr.total_vol_ft3) }} ft³</div>
+    </div>
+    <div class="result-card">
+        <h4><span class="tt" data-tt="Fluid that remains in the pipe after all ruptures — pipe above every atmospheric head elevation stays full">Combined Retained</span></h4>
+        <div class="vol-primary retained">{{ "{:,.0f}".format(mr.total_vol_gal - mr.total_released_gal) }} gal</div>
+        <div class="vol-secondary">{{ "{:,.1f}".format((mr.total_vol_gal - mr.total_released_gal) / 42) }} bbl</div>
+        <div class="vol-secondary" style="margin-top:6px; font-size:0.9em; color:#27ae60;">{{ "%.1f"|format(100 - mr.pct_released) }}% retained</div>
+    </div>
+</div>
+
+<div class="chart-box">
+    <h3>Elevation Profile — Multi-Rupture Drain Analysis</h3>
+    <div id="rupture-chart"></div>
+</div>
+
+<p class="section-title" style="margin-top:4px;">Per-Rupture Breakdown</p>
+<div class="per-rupture-grid" style="grid-template-columns: repeat({{ [mr.per_rupture|length, 3]|min }}, 1fr);">
+    {% set colors = ['#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22'] %}
+    {% for r in mr.per_rupture %}
+    {% set col = colors[loop.index0 % colors|length] %}
+    <div class="per-rupture-card" style="border-left-color:{{ col }};">
+        <h5 style="color:{{ col }};">Rupture {{ loop.index }}: {{ rup_station_inputs[loop.index0] if rup_station_inputs|length > loop.index0 else r.rup_station }}</h5>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Ground elevation at this rupture point — the fluid surface settles here after a full-bore release">Elevation</span></span><span class="stat-val">{{ "%.1f"|format(r.rup_elev) }} ft</span></div>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Atmospheric head elevation for this rupture — pipe above this elevation stays full; pipe below it (down to the rupture) drains">Atm Head Elev</span></span><span class="stat-val">{{ "%.1f"|format(r.threshold_elev) }} ft</span></div>
+        {% if r.get('drained_station_lo') is not none and r.get('drained_station_hi') is not none %}
+        <div class="stat-row">
+            <span class="stat-label"><span class="tt" data-tt="Station range of this rupture's zone of influence — from the furthest upstream drained station to the furthest downstream drained station">Zone of Influence</span></span>
+            <span class="stat-val" style="color:{{ col }};">{{ r.drained_station_lo | station_format }} → {{ r.drained_station_hi | station_format }}</span>
+        </div>
+        {% endif %}
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Volume attributed to this rupture's zone — segments in overlap areas are assigned to the nearest rupture, so all cards sum to the combined total">Released</span></span><span class="stat-val" style="color:{{ col }};">{{ "{:,.0f}".format(r.get('attributed_released_gal', r.total_released_gal)) }} gal</span></div>
+        <div class="stat-row"><span class="stat-label">% of Total</span><span class="stat-val" style="color:{{ col }};">{{ "%.1f"|format(r.get('attributed_released_gal', r.total_released_gal) / multi_result.total_released_gal * 100 if multi_result.total_released_gal else 0) }}%</span></div>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Length of drained pipe on the upstream side of this rupture point">Up Drained</span></span><span class="stat-val">{{ "{:,.0f}".format(r.upstream_drained_ft) }} ft</span></div>
+        <div class="stat-row"><span class="stat-label"><span class="tt" data-tt="Length of drained pipe on the downstream side of this rupture point">Dn Drained</span></span><span class="stat-val">{{ "{:,.0f}".format(r.downstream_drained_ft) }} ft</span></div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+(function() {
+    var stations = {{ multi_result.stations | tojson }};
+    var elevations = {{ multi_result.elevations | tojson }};
+    var unionDrained = {{ multi_result.union_drained_flags | tojson }};
+    var perRupture = {{ multi_result.per_rupture | tojson }};
+    var COLORS = ['#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22'];
+
+    function stnFmt(s) {
+        var abs = Math.abs(s);
+        var sta = Math.floor(abs / 100);
+        var rem = abs % 100;
+        var remStr = rem === Math.floor(rem) ? String(Math.floor(rem)).padStart(2, '0') : rem.toFixed(2).padStart(5, '0');
+        return (s < 0 ? '-' : '') + sta + '+' + remStr;
+    }
+
+    function buildSegments(drained) {
+        var segs = [];
+        var i = 0;
+        while (i < stations.length) {
+            var isDrained = Boolean(drained[i]);
+            var j = i;
+            while (j < stations.length && Boolean(drained[j]) === isDrained) j++;
+            var start = (i > 0) ? i - 1 : i;
+            var end   = (j < stations.length) ? j : j - 1;
+            segs.push({ isDrained: isDrained, start: start, end: end });
+            i = j;
+        }
+        return segs;
+    }
+
+    var traces = [];
+
+    // Merge all same-type segments into two line traces with null separators
+    var retX = [], retY = [], retC = [];
+    var drnX = [], drnY = [], drnC = [];
+
+    var segs = buildSegments(unionDrained);
+    segs.forEach(function(seg) {
+        var xs = stations.slice(seg.start, seg.end + 1);
+        var ys = elevations.slice(seg.start, seg.end + 1);
+        if (seg.isDrained) {
+            if (drnX.length) { drnX.push(null); drnY.push(null); drnC.push(null); }
+            drnX = drnX.concat(xs); drnY = drnY.concat(ys);
+            drnC = drnC.concat(xs.map(stnFmt));
+        } else {
+            var leftLevel = ys[0], rightLevel = ys[ys.length - 1];
+            var water = ys.map(function(_, ii) {
+                var t = ys.length > 1 ? ii / (ys.length - 1) : 0;
+                return leftLevel + t * (rightLevel - leftLevel);
+            });
+            traces.push({ x: xs.concat(xs.slice().reverse()), y: water.concat(ys.slice().reverse()),
+                type:'scatter', mode:'none', fill:'toself', fillcolor:'rgba(52,152,219,0.25)',
+                hoverinfo:'skip', showlegend:false });
+            if (retX.length) { retX.push(null); retY.push(null); retC.push(null); }
+            retX = retX.concat(xs); retY = retY.concat(ys);
+            retC = retC.concat(xs.map(stnFmt));
+        }
+    });
+
+    traces.push({ x: retX, y: retY, type:'scatter', mode:'lines',
+        name:'Water Retained', line:{ color:'#3498db', width:2 },
+        hovertemplate:'Stn: %{customdata}<br>Elev: %{y:.1f} ft<extra></extra>',
+        customdata: retC });
+    traces.push({ x: drnX, y: drnY, type:'scatter', mode:'lines',
+        name:'Pipe Drained', line:{ color:'#e74c3c', width:2 },
+        hovertemplate:'Stn: %{customdata}<br>Elev: %{y:.1f} ft<extra></extra>',
+        customdata: drnC });
+
+    // Air-in-line per rupture: slack zone between rup_elev and threshold_elev
+    var airLegendAdded = false;
+    perRupture.forEach(function(r) {
+        if (!r.drained_flags || r.threshold_elev == null) return;
+        var rElev = r.rup_elev, rThresh = r.threshold_elev;
+        if (!airLegendAdded) {
+            traces.push({ x:[null], y:[null], type:'scatter', mode:'none',
+                name:'Air in Line', fill:'toself',
+                fillcolor:'rgba(236,204,104,0.22)', line:{color:'rgba(236,204,104,0.5)',width:1},
+                showlegend:true });
+            airLegendAdded = true;
+        }
+        var ai = 0;
+        while (ai < stations.length) {
+            if (!(r.drained_flags[ai] && elevations[ai] >= rElev && elevations[ai] <= rThresh)) { ai++; continue; }
+            var aj = ai;
+            while (aj < stations.length && r.drained_flags[aj] && elevations[aj] >= rElev && elevations[aj] <= rThresh) aj++;
+            var axs = stations.slice(ai, aj);
+            var ays = elevations.slice(ai, aj);
+            var floor = axs.map(function() { return rElev; });
+            traces.push({
+                x: axs.concat(axs.slice().reverse()),
+                y: ays.concat(floor.slice().reverse()),
+                type:'scatter', mode:'none', fill:'toself',
+                fillcolor:'rgba(236,204,104,0.22)',
+                line:{color:'rgba(236,204,104,0.5)', width:1},
+                hoverinfo:'skip', showlegend:false,
+            });
+            traces.push({
+                x: axs, y: floor,
+                type:'scatter', mode:'lines',
+                line:{color:'rgba(236,204,104,0.7)', width:1.5, dash:'dot'},
+                hovertemplate:'Water surface: ' + rElev.toFixed(1) + ' ft<extra></extra>',
+                showlegend:false,
+            });
+            ai = aj;
+        }
+    });
+
+    // Per-rupture X markers
+    perRupture.forEach(function(r, idx) {
+        var col = COLORS[idx % COLORS.length];
+        traces.push({ x: [r.rup_station], y: [r.rup_elev], type:'scatter', mode:'markers+text',
+            name: 'Rupture ' + (idx+1) + ' @ ' + stnFmt(r.rup_station),
+            marker: { color: col, size: 12, symbol: 'x' },
+            text: ['R' + (idx+1) + '<br>' + stnFmt(r.rup_station)],
+            textposition: 'top center', textfont: { color: col, size: 10 },
+            hovertemplate: 'Rupture ' + (idx+1) + ' @ ' + stnFmt(r.rup_station) + '<br>Elev: ' + r.rup_elev.toFixed(1) + ' ft<extra></extra>' });
+    });
+
+    var range = Math.abs(stations[stations.length-1] - stations[0]);
+    var rawStep = range / 8;
+    var niceSteps = [50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+    var step = niceSteps[niceSteps.length - 1];
+    for (var k = 0; k < niceSteps.length; k++) {
+        if (niceSteps[k] >= rawStep) { step = niceSteps[k]; break; }
+    }
+    var firstTick = Math.ceil(stations[0] / step) * step;
+    var tickvals = [];
+    for (var t = firstTick; t <= stations[stations.length-1]; t += step) tickvals.push(t);
+
+    // Per-rupture zone shading — each rupture gets its own color
+    var shapes = [];
+    var annotations = [];
+
+    function hexToRgb(hex) {
+        hex = hex.replace('#', '');
+        return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)];
+    }
+
+    if (perRupture.length >= 1 && perRupture[0].drained_flags) {
+        // Pass 1: compute each rupture's full drained extent
+        var extents = perRupture.map(function(r) {
+            var lo = Infinity, hi = -Infinity;
+            r.drained_flags.forEach(function(d, k) {
+                if (d) {
+                    if (stations[k] < lo) lo = stations[k];
+                    if (stations[k] > hi) hi = stations[k];
+                }
+            });
+            return lo === Infinity ? null : { lo: lo, hi: hi };
+        });
+
+        // Pass 2: draw per-rupture zone bands and labels pinned to top of chart,
+        //         staggered vertically so they don't overlap each other
+        var labelYStep = 0.07;  // paper-coord gap between successive zone labels
+        extents.forEach(function(ext, idx) {
+            if (!ext) return;
+            var col = COLORS[idx % COLORS.length];
+            var rgb = hexToRgb(col);
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: ext.lo, x1: ext.hi, y0: 0, y1: 1,
+                fillcolor: 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.11)',
+                line: { color: 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.40)', width: 1, dash: 'dot' },
+                layer: 'below',
+            });
+            annotations.push({
+                x: (ext.lo + ext.hi) / 2,
+                y: 1 - idx * labelYStep,
+                xref: 'x', yref: 'paper',
+                text: 'R' + (idx + 1) + ' zone',
+                showarrow: false,
+                font: { size: 9.5, color: col },
+                xanchor: 'center', yanchor: 'top',
+            });
+        });
+
+        // Pass 3: detect pairwise overlaps and label them just below the last zone label row
+        var overlapLabelY = 1 - extents.length * labelYStep;
+        for (var a = 0; a < extents.length; a++) {
+            for (var b = a + 1; b < extents.length; b++) {
+                if (!extents[a] || !extents[b]) continue;
+                var overlapLo = Math.max(extents[a].lo, extents[b].lo);
+                var overlapHi = Math.min(extents[a].hi, extents[b].hi);
+                if (overlapLo >= overlapHi) continue;
+                annotations.push({
+                    x: (overlapLo + overlapHi) / 2,
+                    y: overlapLabelY,
+                    xref: 'x', yref: 'paper',
+                    text: 'R' + (a + 1) + '+R' + (b + 1) + ' overlap',
+                    showarrow: false,
+                    font: { size: 9, color: 'rgba(255,220,100,0.9)' },
+                    xanchor: 'center', yanchor: 'top',
+                    bgcolor: 'rgba(243,156,18,0.18)',
+                    bordercolor: 'rgba(243,156,18,0.50)',
+                    borderwidth: 1,
+                    borderpad: 3,
+                });
+                overlapLabelY -= labelYStep;
+            }
+        }
+    }
+
+    Plotly.newPlot('rupture-chart', traces, {
+        paper_bgcolor: '#16213e', plot_bgcolor: '#16213e',
+        font: { color: '#ecf0f1', size: 11 },
+        margin: { l: 60, r: 20, t: 24, b: 60 },
+        xaxis: {
+            title: { text: 'Station', font: { size: 11 } },
+            tickmode: 'array', tickvals: tickvals, ticktext: tickvals.map(stnFmt),
+            tickangle: -45, showgrid: true, gridcolor: 'rgba(255,255,255,0.12)', gridwidth: 1,
+            color: '#95a5a6',
+            rangeslider: { visible: true, bgcolor: '#1a1a2e', bordercolor: '#455a64', thickness: 0.08 },
+        },
+        yaxis: {
+            title: { text: 'Elevation (ft)', font: { size: 11 } },
+            showgrid: true, gridcolor: 'rgba(255,255,255,0.12)', gridwidth: 1,
+            color: '#95a5a6', autorange: true, rangemode: 'normal',
+        },
+        legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 11 } },
+        hovermode: 'x unified',
+        shapes: shapes,
+        annotations: annotations,
+    }, { responsive: true, displayModeBar: false });
+})();
+</script>
+
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+    </svg>
+    <p>Enter a rupture station and click <strong>Run Analysis</strong> to calculate fluid release volumes.<br>Add multiple stations to model simultaneous ruptures.</p>
+</div>
+{% endif %}
+
+</div>
+
+<script>
+(function() {
+    // Fluid selector
+    var swSelect = document.getElementById('sw-select');
+    var swCustomRow = document.getElementById('sw-custom-row');
+    var swCustomInput = document.getElementById('sw-custom-input');
+    var swValue = document.getElementById('sw-value');
+    var currentVal = parseFloat(swValue.value);
+
+    var matched = false;
+    for (var i = 0; i < swSelect.options.length; i++) {
+        if (swSelect.options[i].value !== 'custom' &&
+                Math.abs(parseFloat(swSelect.options[i].value) - currentVal) < 0.001) {
+            swSelect.selectedIndex = i;
+            matched = true;
+            break;
+        }
+    }
+    if (!matched) {
+        swSelect.value = 'custom';
+        swCustomRow.style.display = 'block';
+        swCustomInput.value = currentVal;
+    }
+
+    window.onSwChange = function(sel) {
+        if (sel.value === 'custom') {
+            swCustomRow.style.display = 'block';
+            swCustomInput.focus();
+        } else {
+            swCustomRow.style.display = 'none';
+            swValue.value = sel.value;
+        }
+    };
+
+    swCustomInput.addEventListener('input', function() {
+        if (this.value) swValue.value = this.value;
+    });
+
+    // Dynamic rupture station list
+    window.addStn = function() {
+        var list = document.getElementById('stn-list');
+        var row = document.createElement('div');
+        row.className = 'stn-row';
+        row.innerHTML = '<input type="text" name="rup_station" placeholder="e.g. 330+44" required>' +
+            '<button type="button" class="btn-remove" onclick="removeStn(this)" title="Remove">&#215;</button>';
+        list.appendChild(row);
+        row.querySelector('input').focus();
+        updateRemoveButtons();
+    };
+
+    window.removeStn = function(btn) {
+        var list = document.getElementById('stn-list');
+        if (list.querySelectorAll('.stn-row').length <= 1) return;
+        btn.closest('.stn-row').remove();
+        updateRemoveButtons();
+    };
+
+    function updateRemoveButtons() {
+        var rows = document.getElementById('stn-list').querySelectorAll('.stn-row');
+        rows.forEach(function(r) {
+            r.querySelector('.btn-remove').style.visibility = rows.length > 1 ? 'visible' : 'hidden';
+        });
+    }
+
+    updateRemoveButtons();
+
+    window.toggleRename = function(id) {
+        var form = document.getElementById('rename-' + id);
+        var visible = form.style.display === 'block';
+        form.style.display = visible ? 'none' : 'block';
+        if (!visible) form.querySelector('input[name="label"]').select();
+    };
+
+    // Localize UTC timestamps to browser timezone
+    document.querySelectorAll('.local-time[data-utc]').forEach(function(el) {
+        var utc = el.getAttribute('data-utc');
+        if (!utc) return;
+        var d = new Date(utc);
+        if (isNaN(d)) return;
+        el.textContent = d.toLocaleString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        });
+    });
+})();
+</script>
+
+</body>
+</html>

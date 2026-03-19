@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Hydrotest Engineering Analysis</title>
+    <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
     <style>
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
@@ -74,18 +75,57 @@
                 <div class="sidebar-grid">
                     <label>Start Station</label><input name="start" value="{{ p.start|station_format }}" onblur="formatStation(this)">
                     <label>End Station</label><input name="end" value="{{ p.end|station_format }}" onblur="formatStation(this)">
-                    <label>Fill GPM</label><input type="number" name="fill_gpm" value="{{ p.fill_gpm }}" min="0">
-                    <label>Dewater GPM</label><input type="number" name="dewater_gpm" value="{{ p.dewater_gpm }}" min="0">
-                    <label>Pre-pack CFM</label><input type="number" name="cfm" value="{{ p.cfm }}" min="0">
-                    <label>OD (inches)</label><input type="number" name="od" value="{{ p.od }}" min="0.001">
-                    <label>Min Test Pressure (psig)</label><input type="number" name="min_p" value="{{ p.min_p }}" min="0">
-                    <label>Test Site Station</label><input name="test_site" value="{{ p.test_site|station_format }}" onblur="formatStation(this)">
-                    <label>Dewater Site Station</label><input name="dewater_site" value="{{ p.dewater_site|station_format }}" onblur="formatStation(this)">
-                    <label>Test Window Lower Buffer</label><input type="number" name="min_excess" value="{{ p.get('min_excess') if p.get('min_excess') is not none else 25 }}" min="0">
-                    <label>Test Window Size</label><input type="number" name="window_upper" value="{{ p.get('window_upper') if p.get('window_upper') is not none else 50 }}" min="0">
-                    <label>Override Pre-pack psig</label><input type="number" name="override_prepack" value="{{ '' if p.get('override_prepack') is none else p.override_prepack }}" placeholder="None">
-                    <label>Override Vent Threshold psig</label><input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None">
-                    <label>Pipe Grade</label><select name="grade">
+                    <label><span class="tt" data-tt="Gallons Per Minute — water injection rate into the pipeline during filling">Fill GPM</span></label><input type="number" name="fill_gpm" value="{{ p.fill_gpm }}" min="0">
+                    <label><span class="tt" data-tt="Gallons Per Minute — flow rate when draining the pipeline after the test">Dewater GPM</span></label><input type="number" name="dewater_gpm" value="{{ p.dewater_gpm }}" min="0">
+                    <label><span class="tt" data-tt="Cubic Feet per Minute — rate of compressed air injection to pre-pressurize void space ahead of the water column at high points">Pre-pack CFM</span></label><input type="number" name="cfm" value="{{ p.cfm }}" min="0">
+                    <label><span class="tt" data-tt="Nominal Pipe Size per API 5L — determines the outside diameter of the pipe">NPS</span></label>
+                    <select name="nps" style="width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-size:0.88em; font-family:inherit; background:white; color:#2c3e50;">
+                        {% set sel = p.get('nps', '42') %}
+                        <option value="0.5"  {% if sel=='0.5'  %}selected{% endif %}>NPS 1/2   (0.840")</option>
+                        <option value="0.75" {% if sel=='0.75' %}selected{% endif %}>NPS 3/4   (1.050")</option>
+                        <option value="1"    {% if sel=='1'    %}selected{% endif %}>NPS 1     (1.315")</option>
+                        <option value="1.25" {% if sel=='1.25' %}selected{% endif %}>NPS 1-1/4 (1.660")</option>
+                        <option value="1.5"  {% if sel=='1.5'  %}selected{% endif %}>NPS 1-1/2 (1.900")</option>
+                        <option value="2"    {% if sel=='2'    %}selected{% endif %}>NPS 2     (2.375")</option>
+                        <option value="2.5"  {% if sel=='2.5'  %}selected{% endif %}>NPS 2-1/2 (2.875")</option>
+                        <option value="3"    {% if sel=='3'    %}selected{% endif %}>NPS 3     (3.500")</option>
+                        <option value="3.5"  {% if sel=='3.5'  %}selected{% endif %}>NPS 3-1/2 (4.000")</option>
+                        <option value="4"    {% if sel=='4'    %}selected{% endif %}>NPS 4     (4.500")</option>
+                        <option value="5"    {% if sel=='5'    %}selected{% endif %}>NPS 5     (5.563")</option>
+                        <option value="6"    {% if sel=='6'    %}selected{% endif %}>NPS 6     (6.625")</option>
+                        <option value="8"    {% if sel=='8'    %}selected{% endif %}>NPS 8     (8.625")</option>
+                        <option value="10"   {% if sel=='10'   %}selected{% endif %}>NPS 10   (10.750")</option>
+                        <option value="12"   {% if sel=='12'   %}selected{% endif %}>NPS 12   (12.750")</option>
+                        <option value="14"   {% if sel=='14'   %}selected{% endif %}>NPS 14   (14.000")</option>
+                        <option value="16"   {% if sel=='16'   %}selected{% endif %}>NPS 16   (16.000")</option>
+                        <option value="18"   {% if sel=='18'   %}selected{% endif %}>NPS 18   (18.000")</option>
+                        <option value="20"   {% if sel=='20'   %}selected{% endif %}>NPS 20   (20.000")</option>
+                        <option value="22"   {% if sel=='22'   %}selected{% endif %}>NPS 22   (22.000")</option>
+                        <option value="24"   {% if sel=='24'   %}selected{% endif %}>NPS 24   (24.000")</option>
+                        <option value="26"   {% if sel=='26'   %}selected{% endif %}>NPS 26   (26.000")</option>
+                        <option value="28"   {% if sel=='28'   %}selected{% endif %}>NPS 28   (28.000")</option>
+                        <option value="30"   {% if sel=='30'   %}selected{% endif %}>NPS 30   (30.000")</option>
+                        <option value="32"   {% if sel=='32'   %}selected{% endif %}>NPS 32   (32.000")</option>
+                        <option value="34"   {% if sel=='34'   %}selected{% endif %}>NPS 34   (34.000")</option>
+                        <option value="36"   {% if sel=='36'   %}selected{% endif %}>NPS 36   (36.000")</option>
+                        <option value="38"   {% if sel=='38'   %}selected{% endif %}>NPS 38   (38.000")</option>
+                        <option value="40"   {% if sel=='40'   %}selected{% endif %}>NPS 40   (40.000")</option>
+                        <option value="42"   {% if sel=='42'   %}selected{% endif %}>NPS 42   (42.000")</option>
+                        <option value="44"   {% if sel=='44'   %}selected{% endif %}>NPS 44   (44.000")</option>
+                        <option value="46"   {% if sel=='46'   %}selected{% endif %}>NPS 46   (46.000")</option>
+                        <option value="48"   {% if sel=='48'   %}selected{% endif %}>NPS 48   (48.000")</option>
+                        <option value="52"   {% if sel=='52'   %}selected{% endif %}>NPS 52   (52.000")</option>
+                        <option value="56"   {% if sel=='56'   %}selected{% endif %}>NPS 56   (56.000")</option>
+                        <option value="60"   {% if sel=='60'   %}selected{% endif %}>NPS 60   (60.000")</option>
+                    </select>
+                    <label><span class="tt" data-tt="Minimum required gauge pressure at the test site for the hydrostatic test to be considered valid per code">Min Test Pressure (psig)</span></label><input type="number" name="min_p" value="{{ p.min_p }}" min="0">
+                    <label><span class="tt" data-tt="Station along the pipeline where the primary pressure gauge is located — all pressure calculations are referenced to this elevation">Test Site Station</span></label><input name="test_site" value="{{ p.test_site|station_format }}" onblur="formatStation(this)">
+                    <label><span class="tt" data-tt="Station where the dewater connection is located — used to set the low-point pressure reference for draining">Dewater Site Station</span></label><input name="dewater_site" value="{{ p.dewater_site|station_format }}" onblur="formatStation(this)">
+                    <label><span class="tt" data-tt="Minimum excess pressure (psi) above the minimum test pressure that defines the lower bound of the acceptable test window at the test site">Test Window Lower Buffer</span></label><input type="number" name="min_excess" value="{{ p.get('min_excess') if p.get('min_excess') is not none else 25 }}" min="0">
+                    <label><span class="tt" data-tt="Width of the acceptable pressure band in psi — the test window extends from the lower buffer up by this amount at the test site">Test Window Size</span></label><input type="number" name="window_upper" value="{{ p.get('window_upper') if p.get('window_upper') is not none else 50 }}" min="0">
+                    <label><span class="tt" data-tt="Manually set the pre-pack air pressure target in psig, overriding the calculated value">Override Pre-pack psig</span></label><input type="number" name="override_prepack" value="{{ '' if p.get('override_prepack') is none else p.override_prepack }}" placeholder="None">
+                    <label><span class="tt" data-tt="Manually set the pressure at which trapped air vents are opened during filling, overriding the calculated value">Override Vent Threshold psig</span></label><input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None">
+                    <label><span class="tt" data-tt="API 5L material grade — sets the Specified Minimum Yield Strength (SMYS) used to calculate the maximum allowable test pressure">Pipe Grade</span></label><select name="grade">
                         <option value="B" {% if p.grade == 'B' %}selected{% endif %}>B (SMYS 35000)</option>
                         <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42000)</option>
                         <option value="X52" {% if p.grade == 'X52' %}selected{% endif %}>X52 (SMYS 52000)</option>
@@ -94,14 +134,14 @@
                         <option value="X70" {% if p.grade == 'X70' %}selected{% endif %}>X70 (SMYS 70000)</option>
                         <option value="X80" {% if p.grade == 'X80' %}selected{% endif %}>X80 (SMYS 80000)</option>
                     </select>
-                    <label>SMYS Threshold (%)</label><input type="number" step="1" name="smys_threshold" value="{{ p.smys_threshold|int if p.get('smys_threshold') is not none else 104 }}">
-                    <label>Fill Direction</label><select name="fill_direction">
+                    <label><span class="tt" data-tt="Maximum test pressure as a percentage of the SMYS hoop stress limit — typically 100–110% per code. The SMYS limit at each station is calculated from pipe grade, OD, and wall thickness.">SMYS Threshold (%)</span></label><input type="number" step="1" name="smys_threshold" value="{{ p.smys_threshold|int if p.get('smys_threshold') is not none else 104 }}">
+                    <label><span class="tt" data-tt="Direction from which water is pumped into the pipeline — affects the filling sequence and pressure profile at each station">Fill Direction</span></label><select name="fill_direction">
                         <option value="1" {% if p.fill_direction == '1' %}selected{% endif %}>From Start</option>
                         <option value="2" {% if p.fill_direction == '2' %}selected{% endif %}>From End</option>
                     </select>
-                    <label>Head Factor (psi/ft) <span style="font-size:0.8em; color:#95a5a6;">— 0.433 freshwater, 0.445 saltwater</span></label>
+                    <label><span class="tt" data-tt="Pressure per foot of elevation change — 0.433 psi/ft for fresh water (62.4 lb/ft³), 0.445 psi/ft for seawater. Used to adjust test pressures for elevation differences along the route.">Head Factor (psi/ft)</span> <span style="font-size:0.8em; color:#95a5a6;">— 0.433 freshwater, 0.445 saltwater</span></label>
                     <input type="number" name="head_factor" value="{{ p.get('head_factor') if p.get('head_factor') is not none else 0.433 }}" step="0.001" min="0.001">
-                    <label>Unrestrained Footage (ft) <span style="font-size:0.8em; color:#95a5a6;">— above ground / expansion joints</span></label>
+                    <label><span class="tt" data-tt="Footage of pipe free to expand longitudinally — above-ground sections and expansion joints. More unrestrained pipe lowers the theoretical compressibility slope.">Unrestrained Footage (ft)</span> <span style="font-size:0.8em; color:#95a5a6;">— above ground / expansion joints</span></label>
                     <input type="number" name="unrestrained_length" value="{{ p.get('unrestrained_length') or '' }}" placeholder="0 (all restrained)" min="0" step="1">
                 </div>
                 <button type="submit" style="width:100%; padding:10px; margin-top:15px; background:var(--accent-green); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
@@ -110,6 +150,8 @@
             <div style="margin-top:15px; padding-top:15px; border-top:1px solid #455a64;">
                 <p style="font-size:0.75em; color:#95a5a6; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Test Execution</p>
                 <a href="/pv/{{ save_id }}" style="display:block; padding:10px; background:#8e44ad; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em;">PV Plot &#8594;</a>
+                <a href="/rupture/{{ save_id }}" style="display:block; padding:10px; background:#c0392b; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Rupture Analysis &#8594;</a>
+                <a href="/test/{{ save_id }}" style="display:block; padding:10px; background:#16a085; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Test Execution &#8594;</a>
             </div>
             {% endif %}
         </div>
@@ -248,7 +290,7 @@
             <a href="/load/{{ save_id }}" style="background:white; color:#e67e22; padding:7px 16px; border-radius:4px; text-decoration:none; font-weight:700; font-size:0.9em; white-space:nowrap;">Go to Latest</a>
         </div>
         {% endif %}
-        <img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;">
+        <a href="/"><img src="/static/peslogo.png" alt="PES Logo" style="display: block; margin: 0 auto 20px; max-width: 200px;"></a>
         <h1>Hydrotest Analysis Results</h1>
         {% if p.get('analysis_name') %}
         {% set pf_name = portfolios | selectattr('id', 'equalto', p.get('portfolio_id')) | map(attribute='name') | first %}
@@ -264,13 +306,13 @@
         {% endif %}
 
         <div class="stats-grid">
-            <div class="card"><h4>Pre-pack psig{% if p.get('override_prepack') is not none %} (overridden){% endif %}</h4><p>{{ sec.prepack_psi|round(0)|int }} psig</p></div>
-            <div class="card"><h4>Vent Threshold{% if p.get('override_vent') is not none %} (overridden){% endif %}</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
-            <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
-            <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
+            <div class="card"><h4><span class="tt tt-dark" data-tt="Target air pressure to pre-pressurize void space in the pipeline before water arrives at high points — prevents trapped air pockets from collapsing during the test">Pre-pack psig</span>{% if p.get('override_prepack') is not none %} (overridden){% endif %}</h4><p>{{ sec.prepack_psi|round(0)|int }} psig</p></div>
+            <div class="card"><h4><span class="tt tt-dark" data-tt="Gauge pressure at which air vents are opened to purge trapped air ahead of the rising water column during filling">Vent Threshold</span>{% if p.get('override_vent') is not none %} (overridden){% endif %}</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
+            <div class="card"><h4><span class="tt tt-dark" data-tt="The acceptable pressure range at the test site gauge — the test must be held within this band for the required duration">Test Window at Test Site</span></h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
+            <div class="card"><h4><span class="tt tt-dark" data-tt="Total geometric water volume of the pipeline segment based on inside diameter and length">Total Volume</span></h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
             <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft{% if sec.length > 5280 %} ({{ "{:,.2f}".format(sec.length / 5280) }} mi){% endif %}</p></div>
             <div class="card" style="{% if max_smys_pct > p.smys_threshold %}border-top-color: #e74c3c;{% endif %}">
-                <h4>Max % SMYS{% if max_smys_pct > p.smys_threshold %} — EXCEEDS LIMIT{% endif %}</h4>
+                <h4><span class="tt tt-dark" data-tt="Specified Minimum Yield Strength — the highest SMYS percentage reached at any station, accounting for elevation-adjusted pressure. Must remain below the SMYS threshold.">Max % SMYS</span>{% if max_smys_pct > p.smys_threshold %} — EXCEEDS LIMIT{% endif %}</h4>
                 <p style="{% if max_smys_pct > p.smys_threshold %}color: #e74c3c;{% endif %}">{{ max_smys_pct|round(1) }}% at {{ max_smys_station|station_format }}</p>
             </div>
             {% if fill_time %}
@@ -284,7 +326,7 @@
             {% endif %}
             {% if squeeze_vol is not none %}
             <div class="card" style="border-top-color: #8e44ad;">
-                <h4>Est. Squeeze Volume</h4>
+                <h4><span class="tt tt-dark" data-tt="Additional water volume needed to pressurize the filled pipe to the target pressure — accounts for pipe wall expansion and water compressibility">Est. Squeeze Volume</span></h4>
                 <p>{{ "{:,.1f}".format(squeeze_vol) }} gal</p>
                 <p style="font-size:0.65em; color:#7f8c8d; margin-top:4px; font-weight:normal;">to pressurize to target gauge</p>
             </div>
@@ -340,14 +382,14 @@
                 <tr>
                     <th style="text-align:left" onclick="sortTable(0)">Station</th>
                     <th onclick="sortTable(1)">Elevation</th>
-                    <th onclick="sortTable(2)">Test Window Minimum</th>
-                    <th onclick="sortTable(3)">Target Test Pressure</th>
-                    <th onclick="sortTable(4)">Test Window Maximum</th>
-                    <th onclick="sortTable(5)">SMYS Limit</th>
-                    <th onclick="sortTable(6)">% SMYS</th>
+                    <th onclick="sortTable(2)"><span class="tt tt-c" data-tt="Lower bound of the acceptable test pressure at this station — accounts for elevation head and the test window lower buffer">Test Window Minimum</span></th>
+                    <th onclick="sortTable(3)"><span class="tt tt-c" data-tt="Required target test pressure at this station, adjusted for elevation head relative to the test site">Target Test Pressure</span></th>
+                    <th onclick="sortTable(4)"><span class="tt tt-c" data-tt="Upper bound of the acceptable test pressure at this station — capped at the SMYS pressure limit">Test Window Maximum</span></th>
+                    <th onclick="sortTable(5)"><span class="tt tt-c" data-tt="Maximum allowable pressure at this station based on pipe grade, OD, and wall thickness at the SMYS threshold percentage">SMYS Limit</span></th>
+                    <th onclick="sortTable(6)"><span class="tt tt-c" data-tt="Target test pressure at this station expressed as a percentage of the Specified Minimum Yield Strength (SMYS) hoop stress limit">% SMYS</span></th>
                     <th onclick="sortTable(7)">Status</th>
-                    <th onclick="sortTable(8)">Cumulative Gal</th>
-                    <th onclick="sortTable(9)">Prepack psig</th>
+                    <th onclick="sortTable(8)"><span class="tt tt-c" data-tt="Volume of water from the fill point to this station — useful for fill sequencing and pump scheduling">Cumulative Gal</span></th>
+                    <th onclick="sortTable(9)"><span class="tt tt-c" data-tt="Pre-pack air pressure target at this station, adjusted for elevation head relative to the test site">Prepack psig</span></th>
                 </tr>
             </thead>
             <tbody>

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Column Mapping — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/tooltips.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
@@ -14,9 +15,14 @@
         .card.card-blue { border-top-color: #2c3e50; }
         .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
 
-        /* Upload row */
-        .upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .upload-row input[type="file"] { font-size: 0.88em; color: #555; }
+        /* Drag-drop upload zone */
+        .drop-zone { border: 2px dashed #b2bec3; border-radius: 8px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; background: #f8fafb; }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #27ae60; background: #f0faf4; }
+        .drop-zone svg { width: 36px; height: 36px; color: #b2bec3; margin-bottom: 10px; display: block; margin: 0 auto 10px; }
+        .drop-zone p { margin: 0 0 4px; color: #555; font-size: 0.95em; }
+        .drop-zone .drop-hint { font-size: 0.82em; color: #95a5a6; }
+        .drop-zone .drop-filename { font-size: 0.88em; color: #27ae60; font-weight: 600; margin-top: 8px; }
+        .drop-zone input[type="file"] { display: none; }
 
         /* Mapping grid */
         .mapping-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 20px; }
@@ -58,17 +64,22 @@
     <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
 </div>
 
-<img src="/static/peslogo.png" alt="PES Logo" class="logo">
+<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="logo"></a>
 <h1>New Analysis</h1>
 <p class="subtitle">Upload your pipeline survey data and map the required columns</p>
 
 <!-- Upload -->
 <div class="card">
     <h2>Upload Data File</h2>
-    <form method="POST" enctype="multipart/form-data">
-        <div class="upload-row">
-            <input type="file" name="file" accept=".xlsx">
-            <button type="submit" class="btn btn-dark">Upload &amp; Refresh Preview</button>
+    <form method="POST" enctype="multipart/form-data" id="upload-form">
+        <div class="drop-zone" id="drop-zone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+            <p>Drag &amp; drop your .xlsx file here</p>
+            <p class="drop-hint">or click to browse</p>
+            <p class="drop-filename" id="drop-filename"></p>
+            <input type="file" name="file" accept=".xlsx" id="file-input">
         </div>
     </form>
     {% if upload_error %}
@@ -106,25 +117,32 @@
             {% set prev_elev = session.get('col_map', {}).get('elev') or guesses.get('elev') %}
             {% set prev_wt = session.get('col_map', {}).get('wt') or guesses.get('wt') %}
             <div>
-                <label>Station Column</label>
+                <label><span class="tt tt-dark" data-tt="Column in your data file containing pipeline station values (footage or chainage)">Station Column</span></label>
                 <select name="col_station" id="sel-station" required>
                     {% for col in columns %}<option value="{{ col }}" {% if col == prev_sta %}selected{% endif %}>{{ col }}</option>{% endfor %}
                 </select>
             </div>
             <div>
-                <label>Elevation Column</label>
+                <label><span class="tt tt-dark" data-tt="Column containing ground or pipe centerline elevation values (feet or meters)">Elevation Column</span></label>
                 <select name="col_elev" id="sel-elev" required>
                     {% for col in columns %}<option value="{{ col }}" {% if col == prev_elev %}selected{% endif %}>{{ col }}</option>{% endfor %}
                 </select>
             </div>
             <div>
-                <label>Wall Thickness Column</label>
-                <select name="col_wt" id="sel-wt" required>
+                <label><span class="tt tt-dark" data-tt="Pipe wall thickness — select a column from your data or enter a constant value in inches. Used to calculate inside diameter and SMYS pressure limits.">Wall Thickness</span></label>
+                <select name="col_wt" id="sel-wt" required onchange="onWtChange(this)">
+                    <option value="__constant__" {% if prev_wt == '__constant__' %}selected{% endif %}>— Enter constant value —</option>
                     {% for col in columns %}<option value="{{ col }}" {% if col == prev_wt %}selected{% endif %}>{{ col }}</option>{% endfor %}
                 </select>
+                <div id="wt-constant-row" style="margin-top:6px; display:{% if prev_wt == '__constant__' %}block{% else %}none{% endif %};">
+                    <input type="number" name="wt_constant" id="wt-constant-input" step="0.001" min="0.001" max="5"
+                        placeholder="e.g. 0.500"
+                        value="{{ session.get('col_map', {}).get('wt_constant', '') }}"
+                        style="border:1px solid #27ae60;">
+                </div>
             </div>
             <div>
-                <label>Pipe Grade</label>
+                <label><span class="tt tt-dark" data-tt="API 5L material grade — sets the Specified Minimum Yield Strength (SMYS) used to calculate the maximum allowable test pressure">Pipe Grade</span></label>
                 <select name="grade">
                     <option value="B"   {% if p.grade == 'B'   %}selected{% endif %}>B (SMYS 35,000)</option>
                     <option value="X42" {% if p.grade == 'X42' %}selected{% endif %}>X42 (SMYS 42,000)</option>
@@ -136,11 +154,49 @@
                 </select>
             </div>
             <div>
-                <label>OD (inches)</label>
-                <input type="number" name="od" value="{{ p.get('od') if p.get('od') is not none else 42 }}" step="0.001" min="0.001">
+                <label><span class="tt tt-dark" data-tt="Nominal Pipe Size per API 5L — determines the outside diameter of the pipe">NPS</span></label>
+                <select name="nps">
+                    {% set sel = p.get('nps', '42') %}
+                    <option value="0.5"  {% if sel=='0.5'  %}selected{% endif %}>NPS 1/2   (0.840")</option>
+                    <option value="0.75" {% if sel=='0.75' %}selected{% endif %}>NPS 3/4   (1.050")</option>
+                    <option value="1"    {% if sel=='1'    %}selected{% endif %}>NPS 1     (1.315")</option>
+                    <option value="1.25" {% if sel=='1.25' %}selected{% endif %}>NPS 1-1/4 (1.660")</option>
+                    <option value="1.5"  {% if sel=='1.5'  %}selected{% endif %}>NPS 1-1/2 (1.900")</option>
+                    <option value="2"    {% if sel=='2'    %}selected{% endif %}>NPS 2     (2.375")</option>
+                    <option value="2.5"  {% if sel=='2.5'  %}selected{% endif %}>NPS 2-1/2 (2.875")</option>
+                    <option value="3"    {% if sel=='3'    %}selected{% endif %}>NPS 3     (3.500")</option>
+                    <option value="3.5"  {% if sel=='3.5'  %}selected{% endif %}>NPS 3-1/2 (4.000")</option>
+                    <option value="4"    {% if sel=='4'    %}selected{% endif %}>NPS 4     (4.500")</option>
+                    <option value="5"    {% if sel=='5'    %}selected{% endif %}>NPS 5     (5.563")</option>
+                    <option value="6"    {% if sel=='6'    %}selected{% endif %}>NPS 6     (6.625")</option>
+                    <option value="8"    {% if sel=='8'    %}selected{% endif %}>NPS 8     (8.625")</option>
+                    <option value="10"   {% if sel=='10'   %}selected{% endif %}>NPS 10   (10.750")</option>
+                    <option value="12"   {% if sel=='12'   %}selected{% endif %}>NPS 12   (12.750")</option>
+                    <option value="14"   {% if sel=='14'   %}selected{% endif %}>NPS 14   (14.000")</option>
+                    <option value="16"   {% if sel=='16'   %}selected{% endif %}>NPS 16   (16.000")</option>
+                    <option value="18"   {% if sel=='18'   %}selected{% endif %}>NPS 18   (18.000")</option>
+                    <option value="20"   {% if sel=='20'   %}selected{% endif %}>NPS 20   (20.000")</option>
+                    <option value="22"   {% if sel=='22'   %}selected{% endif %}>NPS 22   (22.000")</option>
+                    <option value="24"   {% if sel=='24'   %}selected{% endif %}>NPS 24   (24.000")</option>
+                    <option value="26"   {% if sel=='26'   %}selected{% endif %}>NPS 26   (26.000")</option>
+                    <option value="28"   {% if sel=='28'   %}selected{% endif %}>NPS 28   (28.000")</option>
+                    <option value="30"   {% if sel=='30'   %}selected{% endif %}>NPS 30   (30.000")</option>
+                    <option value="32"   {% if sel=='32'   %}selected{% endif %}>NPS 32   (32.000")</option>
+                    <option value="34"   {% if sel=='34'   %}selected{% endif %}>NPS 34   (34.000")</option>
+                    <option value="36"   {% if sel=='36'   %}selected{% endif %}>NPS 36   (36.000")</option>
+                    <option value="38"   {% if sel=='38'   %}selected{% endif %}>NPS 38   (38.000")</option>
+                    <option value="40"   {% if sel=='40'   %}selected{% endif %}>NPS 40   (40.000")</option>
+                    <option value="42"   {% if sel=='42'   %}selected{% endif %}>NPS 42   (42.000")</option>
+                    <option value="44"   {% if sel=='44'   %}selected{% endif %}>NPS 44   (44.000")</option>
+                    <option value="46"   {% if sel=='46'   %}selected{% endif %}>NPS 46   (46.000")</option>
+                    <option value="48"   {% if sel=='48'   %}selected{% endif %}>NPS 48   (48.000")</option>
+                    <option value="52"   {% if sel=='52'   %}selected{% endif %}>NPS 52   (52.000")</option>
+                    <option value="56"   {% if sel=='56'   %}selected{% endif %}>NPS 56   (56.000")</option>
+                    <option value="60"   {% if sel=='60'   %}selected{% endif %}>NPS 60   (60.000")</option>
+                </select>
             </div>
             <div>
-                <label>Min Test Pressure (psig)</label>
+                <label><span class="tt tt-dark" data-tt="Minimum required gauge pressure at the test site — the test window lower bound cannot drop below this value">Min Test Pressure (psig)</span></label>
                 <input type="number" name="min_p" value="{{ p.get('min_p') if p.get('min_p') is not none else 1850 }}" min="0">
             </div>
         </div>
@@ -153,6 +209,57 @@
 <a href="/" class="back-link">Home</a>
 
 <script>
+// Drag-and-drop upload
+(function() {
+    var zone = document.getElementById('drop-zone');
+    var input = document.getElementById('file-input');
+    var form = document.getElementById('upload-form');
+    var label = document.getElementById('drop-filename');
+
+    zone.addEventListener('click', function() { input.click(); });
+
+    zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', function() { zone.classList.remove('dragover'); });
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        var files = e.dataTransfer.files;
+        if (files.length) {
+            input.files = files;
+            label.textContent = files[0].name;
+            form.submit();
+        }
+    });
+
+    input.addEventListener('change', function() {
+        if (this.files.length) {
+            label.textContent = this.files[0].name;
+            form.submit();
+        }
+    });
+})();
+
+// Wall thickness constant toggle
+function onWtChange(sel) {
+    var row = document.getElementById('wt-constant-row');
+    var inp = document.getElementById('wt-constant-input');
+    if (sel.value === '__constant__') {
+        row.style.display = 'block';
+        inp.required = true;
+        inp.focus();
+    } else {
+        row.style.display = 'none';
+        inp.required = false;
+    }
+}
+
+(function() {
+    // Set initial required state
+    var sel = document.getElementById('sel-wt');
+    var inp = document.getElementById('wt-constant-input');
+    if (sel && sel.value === '__constant__') inp.required = true;
+})();
+
 (function() {
     var sheetSel = document.getElementById('sheet-selector');
     if (!sheetSel) return;
@@ -181,6 +288,13 @@
                     var prev = sel.value;
                     var guess = guesses[guessMap[id]] || null;
                     sel.innerHTML = '';
+                    // For sel-wt, prepend the constant option
+                    if (id === 'sel-wt') {
+                        var constOpt = document.createElement('option');
+                        constOpt.value = '__constant__';
+                        constOpt.textContent = '— Enter constant value —';
+                        sel.appendChild(constOpt);
+                    }
                     var matched = false;
                     data.columns.forEach(function(col) {
                         var opt = document.createElement('option');
@@ -193,6 +307,7 @@
                     if (!matched && guess) {
                         sel.value = guess;
                     }
+                    if (id === 'sel-wt') onWtChange(sel);
                 });
             })
             .catch(function(err) {
