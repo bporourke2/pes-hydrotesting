@@ -2,16 +2,19 @@
 .tt {
     border-bottom: 1px dashed rgba(255,255,255,0.35);
     cursor: help;
-    position: relative;
-    display: inline;
 }
 
-/* Tooltip bubble — appears above by default */
-.tt::before {
-    content: attr(data-tt);
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 0;
+/* Use on light backgrounds */
+.tt-dark {
+    border-bottom-color: rgba(0,0,0,0.4);
+}
+
+/* Shared tooltip bubble — created and positioned by tooltips.js */
+.tt-bubble {
+    position: fixed;
+    display: none;
+    z-index: 99999;
+    pointer-events: none;
     background: #111c24;
     color: #dce6ee;
     border: 1px solid #4a6375;
@@ -23,59 +26,8 @@
     line-height: 1.5;
     white-space: normal;
     width: 240px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease 0.25s;
-    z-index: 9999;
     font-family: 'Segoe UI', sans-serif;
     box-shadow: 0 4px 14px rgba(0,0,0,0.5);
     letter-spacing: 0;
     text-transform: none;
-}
-
-.tt:hover::before {
-    opacity: 1;
-}
-
-/* Caret */
-.tt::after {
-    content: '';
-    position: absolute;
-    bottom: calc(100% + 2px);
-    left: 12px;
-    border: 5px solid transparent;
-    border-top-color: #4a6375;
-    opacity: 0;
-    transition: opacity 0.15s ease 0.25s;
-    z-index: 9999;
-    pointer-events: none;
-}
-
-.tt:hover::after {
-    opacity: 1;
-}
-
-/* Center-aligned variant (for table headers) */
-.tt-c::before {
-    left: 50%;
-    transform: translateX(-50%);
-}
-.tt-c::after {
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-/* Right-anchored variant (for terms near right edge) */
-.tt-r::before {
-    left: auto;
-    right: 0;
-}
-.tt-r::after {
-    left: auto;
-    right: 12px;
-}
-
-/* Use on light backgrounds */
-.tt-dark {
-    border-bottom-color: rgba(0,0,0,0.4);
 }
