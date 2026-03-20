@@ -455,13 +455,15 @@ class Section:
         # Calculate required gauge pressure at test site to satisfy min_p at high point
         max_head_loss = (test_elev - high_elev) * app.head_factor
         
-        # Round lower bound down to nearest 5, then build window off that
+        # Calculated lower bound — no rounding applied
         raw_target = target_gauge_at_test_site - max_head_loss
-        gauge_lower_floored = math.floor((raw_target - window_upper / 2) / 5) * 5
+        calc_gauge_lower = raw_target - window_upper / 2
         # Ensure the highest elevation point still sees at least min_test_req.
-        # Floor rounding can eat into the buffer when min_excess is small.
         min_gauge_lower = min_test_req + (high_elev - test_elev) * app.head_factor
-        self.gauge_lower = max(gauge_lower_floored, math.ceil(min_gauge_lower / 5) * 5)
+        calc_gauge_lower = max(calc_gauge_lower, min_gauge_lower)
+
+        override_gauge_lower = params.get('override_gauge_lower')
+        self.gauge_lower = float(override_gauge_lower) if override_gauge_lower is not None else calc_gauge_lower
         self.gauge_upper = self.gauge_lower + window_upper
         self.target_gauge = self.gauge_lower + window_upper / 2
         

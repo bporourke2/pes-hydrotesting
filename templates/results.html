@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Hydrotest Engineering Analysis</title>
     <link rel="stylesheet" href="/static/tooltips.css">
-    <script src="/static/tooltips.js" defer></script>
     <script src="/static/plotly-2.35.2.min.js"></script>
     <style>
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
@@ -124,6 +123,7 @@
                     <label><span class="tt" data-tt="Station where the dewater connection is located — used to set the low-point pressure reference for draining">Dewater Site Station</span></label><input name="dewater_site" value="{{ p.dewater_site|station_format }}" onblur="formatStation(this)">
                     <label><span class="tt" data-tt="Minimum excess pressure (psi) above the minimum test pressure that defines the lower bound of the acceptable test window at the test site">Test Window Lower Buffer</span></label><input type="number" name="min_excess" value="{{ p.get('min_excess') if p.get('min_excess') is not none else 25 }}" min="0">
                     <label><span class="tt" data-tt="Width of the acceptable pressure band in psi — the test window extends from the lower buffer up by this amount at the test site">Test Window Size</span></label><input type="number" name="window_upper" value="{{ p.get('window_upper') if p.get('window_upper') is not none else 50 }}" min="0">
+                    <label><span class="tt" data-tt="Manually set the lower bound of the test window at the test site gauge in psig, overriding the calculated value — the upper bound remains lower + window size">Override Test Window Lower psig</span></label><input type="number" name="override_gauge_lower" value="{{ '' if p.get('override_gauge_lower') is none else p.override_gauge_lower }}" placeholder="Calculated">
                     <label><span class="tt" data-tt="Manually set the pre-pack air pressure target in psig, overriding the calculated value">Override Pre-pack psig</span></label><input type="number" name="override_prepack" value="{{ '' if p.get('override_prepack') is none else p.override_prepack }}" placeholder="None">
                     <label><span class="tt" data-tt="Manually set the pressure at which trapped air vents are opened during filling, overriding the calculated value">Override Vent Threshold psig</span></label><input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None">
                     <label><span class="tt" data-tt="API 5L material grade — sets the Specified Minimum Yield Strength (SMYS) used to calculate the maximum allowable test pressure">Pipe Grade</span></label><select name="grade">
@@ -152,7 +152,7 @@
                 <p style="font-size:0.75em; color:#95a5a6; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Test Execution</p>
                 <a href="/pv/{{ save_id }}" style="display:block; padding:10px; background:#8e44ad; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em;">PV Plot &#8594;</a>
                 <a href="/rupture/{{ save_id }}" style="display:block; padding:10px; background:#c0392b; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Rupture Analysis &#8594;</a>
-                <a href="/test/{{ save_id }}" style="display:block; padding:10px; background:#16a085; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Test Execution &#8594;</a>
+                <a href="/equipment/{{ save_id }}" style="display:block; padding:10px; background:#16a085; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Test Execution &#8594;</a>
             </div>
             {% endif %}
         </div>
@@ -309,7 +309,7 @@
         <div class="stats-grid">
             <div class="card"><h4><span class="tt tt-dark" data-tt="Target air pressure to pre-pressurize void space in the pipeline before water arrives at high points — prevents trapped air pockets from collapsing during the test">Pre-pack psig</span>{% if p.get('override_prepack') is not none %} (overridden){% endif %}</h4><p>{{ sec.prepack_psi|round(0)|int }} psig</p></div>
             <div class="card"><h4><span class="tt tt-dark" data-tt="Gauge pressure at which air vents are opened to purge trapped air ahead of the rising water column during filling">Vent Threshold</span>{% if p.get('override_vent') is not none %} (overridden){% endif %}</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
-            <div class="card"><h4><span class="tt tt-dark" data-tt="The acceptable pressure range at the test site gauge — the test must be held within this band for the required duration">Test Window at Test Site</span></h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
+            <div class="card"><h4><span class="tt tt-dark" data-tt="The acceptable pressure range at the test site gauge — the test must be held within this band for the required duration">Test Window at Test Site</span>{% if p.get('override_gauge_lower') is not none %} <span style="font-size:0.75em;font-weight:normal;color:#e67e22">(overridden)</span>{% endif %}</h4><p>{{ "%.1f"|format(sec.gauge_lower) }} – {{ "%.1f"|format(sec.gauge_upper) }} psig (Target {{ "%.1f"|format(sec.target_gauge) }})</p></div>
             <div class="card"><h4><span class="tt tt-dark" data-tt="Total geometric water volume of the pipeline segment based on inside diameter and length">Total Volume</span></h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
             <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft{% if sec.length > 5280 %} ({{ "{:,.2f}".format(sec.length / 5280) }} mi){% endif %}</p></div>
             <div class="card" style="{% if max_smys_pct > p.smys_threshold %}border-top-color: #e74c3c;{% endif %}">

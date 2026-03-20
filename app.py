@@ -18,6 +18,12 @@ import threading
 from datetime import datetime
 import pandas as pd
 from logic import PipelineApp, Section, parse_station, station_format, rupture_analysis, multi_rupture_analysis, temp_correction_factor, nps_to_od, od_to_nps, NPS_OD
+from db import (
+    load_save as db_load_save, write_save, delete_save as db_delete_save,
+    load_all_saves, clear_save_portfolio,
+    load_portfolios, save_portfolios, upsert_portfolio, delete_portfolio,
+    load_companies, save_companies, add_company, remove_company,
+)
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger('hydrotest')
@@ -335,62 +341,6 @@ grade_smys = {
     'X80': 80000
 }
 
-PORTFOLIOS_FILE = os.path.join(SAVES_DIR, '_portfolios.json')
-COMPANIES_FILE  = os.path.join(SAVES_DIR, '_companies.json')
-
-def load_portfolios():
-    if os.path.exists(PORTFOLIOS_FILE):
-        try:
-            with open(PORTFOLIOS_FILE) as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                return data
-        except Exception:
-            # Backup corrupted file before returning empty
-            backup = PORTFOLIOS_FILE + '.corrupt'
-            if not os.path.exists(backup):
-                try:
-                    shutil.copy(PORTFOLIOS_FILE, backup)
-                except Exception:
-                    pass
-            logging.warning(f"Corrupted {PORTFOLIOS_FILE} — backed up to .corrupt")
-    return []
-
-def save_portfolios(portfolios):
-    safe_write_json(PORTFOLIOS_FILE, portfolios)
-
-def load_companies():
-    if os.path.exists(COMPANIES_FILE):
-        try:
-            with open(COMPANIES_FILE) as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                return data
-        except Exception:
-            backup = COMPANIES_FILE + '.corrupt'
-            if not os.path.exists(backup):
-                try:
-                    shutil.copy(COMPANIES_FILE, backup)
-                except Exception:
-                    pass
-            logging.warning(f"Corrupted {COMPANIES_FILE} — backed up to .corrupt")
-    return []
-
-def save_companies(companies):
-    safe_write_json(COMPANIES_FILE, companies)
-
-def load_all_saves():
-    saves = []
-    if os.path.exists(SAVES_DIR):
-        for fname in sorted(os.listdir(SAVES_DIR), reverse=True):
-            if fname.endswith('.json') and not fname.startswith('_'):
-                try:
-                    with open(os.path.join(SAVES_DIR, fname)) as f:
-                        saves.append(json.load(f))
-                except Exception:
-                    pass
-    return saves
-
 @app.route('/')
 @login_required
 def welcome():
@@ -444,12 +394,7 @@ def portfolio_create():
         portfolios = load_portfolios()
         if not any(pf['name'].lower() == name.lower() for pf in portfolios):
             new_id = str(uuid.uuid4())[:8]
-            portfolios.append({
-                'id': new_id,
-                'name': name,
-                'company': request.form.get('company', '').strip() or None,
-            })
-            save_portfolios(portfolios)
+            upsert_portfolio(new_id, name, request.form.get('company', '').strip() or None)
             # Auto-assign the new portfolio to the creating user
             user_sub = session.get('user', {}).get('sub')
             if user_sub:
@@ -464,34 +409,19 @@ def portfolio_create():
 def portfolio_edit(portfolio_id):
     validate_save_id(portfolio_id)
     portfolios = load_portfolios()
-    for pf in portfolios:
-        if pf['id'] == portfolio_id:
-            pf['name']    = request.form.get('name', pf['name']).strip() or pf['name']
-            pf['company'] = request.form.get('company', '').strip() or None
-            break
-    save_portfolios(portfolios)
+    existing = next((pf for pf in portfolios if pf['id'] == portfolio_id), None)
+    if existing:
+        name = request.form.get('name', existing['name']).strip() or existing['name']
+        company = request.form.get('company', '').strip() or None
+        upsert_portfolio(portfolio_id, name, company)
     return redirect(url_for('settings'))
 
 @app.route('/portfolio/delete/<portfolio_id>', methods=['POST'])
 @admin_required
 def portfolio_delete(portfolio_id):
     validate_save_id(portfolio_id)
-    portfolios = load_portfolios()
-    portfolios = [p for p in portfolios if p['id'] != portfolio_id]
-    save_portfolios(portfolios)
-    # Unassign any saves that belonged to this portfolio
-    for fname in os.listdir(SAVES_DIR):
-        if fname.endswith('.json') and not fname.startswith('_'):
-            fpath = os.path.join(SAVES_DIR, fname)
-            try:
-                with open(fpath) as f:
-                    save = json.load(f)
-                if save.get('portfolio_id') == portfolio_id:
-                    save['portfolio_id'] = None
-                    safe_write_json(fpath, save)
-            except Exception:
-                pass
-    # Remove portfolio from all user access lists
+    delete_portfolio(portfolio_id)
+    clear_save_portfolio(portfolio_id)
     remove_portfolio_from_all_users(portfolio_id)
     next_page = request.args.get('next', 'welcome')
     if next_page not in ('welcome', 'settings'):
@@ -510,12 +440,8 @@ def settings():
 def company_add():
     name = request.form.get('name', '').strip()
     if name:
-        companies = load_companies()
-        if name not in companies:
-            companies.append(name)
-            companies.sort(key=str.lower)
-            save_companies(companies)
-            log_action('COMPANY_ADD', name)
+        add_company(name)
+        log_action('COMPANY_ADD', name)
     return redirect(url_for('settings'))
 
 @app.route('/settings/company/delete', methods=['POST'])
@@ -523,9 +449,7 @@ def company_add():
 def company_delete():
     name = request.form.get('name', '').strip()
     if name:
-        companies = load_companies()
-        companies = [c for c in companies if c != name]
-        save_companies(companies)
+        remove_company(name)
         log_action('COMPANY_DELETE', name)
     return redirect(url_for('settings'))
 
@@ -663,11 +587,9 @@ def docs_delete():
 @login_required
 def rupture(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         abort(404)
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
 
     col_map = data.get('col_map', {})
@@ -782,11 +704,9 @@ def rupture(save_id):
 @login_required
 def rupture_save(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         abort(404)
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
 
     col_map = data.get('col_map', {})
@@ -902,8 +822,7 @@ def rupture_save(save_id):
     else:
         data['rupture_analyses'].append(entry)
 
-    with open(save_file, 'w') as f:
-        json.dump(data, f, indent=2)
+    write_save(data)
     log_action('RUPTURE_SAVE', f'save={save_id} label={label} mode={mode} stns={raw_stns}')
 
     from urllib.parse import quote
@@ -917,11 +836,9 @@ def rupture_save(save_id):
 @login_required
 def rupture_rename_ra(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         abort(404)
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
 
     ra_id = request.form.get('ra_id', '').strip()
@@ -931,8 +848,7 @@ def rupture_rename_ra(save_id):
             if ra.get('id') == ra_id:
                 ra['label'] = new_label
                 break
-        with open(save_file, 'w') as f:
-            json.dump(data, f, indent=2)
+        write_save(data)
         log_action('RUPTURE_RENAME_RA', f'save={save_id} ra_id={ra_id} label={new_label}')
 
     return redirect(url_for('rupture', save_id=save_id))
@@ -942,11 +858,9 @@ def rupture_rename_ra(save_id):
 @login_required
 def rupture_delete_ra(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         abort(404)
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
 
     ra_id = request.form.get('ra_id', '').strip()
@@ -954,8 +868,7 @@ def rupture_delete_ra(save_id):
         before = len(data.get('rupture_analyses', []))
         data['rupture_analyses'] = [ra for ra in data.get('rupture_analyses', []) if ra.get('id') != ra_id]
         if len(data['rupture_analyses']) < before:
-            with open(save_file, 'w') as f:
-                json.dump(data, f, indent=2)
+            write_save(data)
             log_action('RUPTURE_DELETE_RA', f'save={save_id} ra_id={ra_id}')
 
     return redirect(url_for('rupture', save_id=save_id))
@@ -1030,10 +943,9 @@ def project_setup():
             pi['portfolio_id'] = None
         new_pf_name = request.form.get('new_portfolio_name', '').strip()
         if new_pf_name and not pi['portfolio_id']:
-            new_pf = {'id': str(uuid.uuid4())[:8], 'name': new_pf_name, 'company': pi.get('owner_company') or None}
-            portfolios.append(new_pf)
-            save_portfolios(portfolios)
-            pi['portfolio_id'] = new_pf['id']
+            new_pf_id = str(uuid.uuid4())[:8]
+            upsert_portfolio(new_pf_id, new_pf_name, pi.get('owner_company') or None)
+            pi['portfolio_id'] = new_pf_id
         session['project_info'] = pi
         if pi.get('portfolio_id'):
             p = session.get('params', {})
@@ -1287,7 +1199,7 @@ def results():
                 form_dict['od'] = od_val
 
         # Handle numeric fields to convert strings to floats, fallback if invalid or empty
-        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length', 'head_factor']
+        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'override_gauge_lower', 'smys_threshold', 'unrestrained_length', 'head_factor']
         for key in numeric_keys:
             if key in form_dict:
                 value = form_dict[key].strip() if form_dict[key] else ''
@@ -1297,7 +1209,7 @@ def results():
                     except ValueError:
                         form_dict[key] = p.get(key)  # Fallback to previous if invalid
                 else:
-                    if key in ['override_prepack', 'override_vent', 'unrestrained_length']:
+                    if key in ['override_prepack', 'override_vent', 'override_gauge_lower', 'unrestrained_length']:
                         form_dict[key] = None  # Clear to default when blank
                     else:
                         form_dict[key] = p.get(key)  # Keep previous if empty for non-overrides
@@ -1380,12 +1292,7 @@ def results():
         portfolios = load_portfolios()
         save_id = session.get('save_id')
         # Load version info for the current save if one is loaded
-        current_save = None
-        if save_id:
-            sf = os.path.join(SAVES_DIR, f'{save_id}.json')
-            if os.path.exists(sf):
-                with open(sf) as f:
-                    current_save = json.load(f)
+        current_save = db_load_save(save_id) if save_id else None
         # When inside a saved analysis, only show that analysis in the sidebar list
         if save_id and current_save:
             saves = [current_save]
@@ -1453,13 +1360,11 @@ def save_analysis():
     if overwrite_id:
         # Overwrite existing save — keep same id and data file path, push old state to history
         save_id = overwrite_id
-        existing_file = os.path.join(SAVES_DIR, f'{save_id}.json')
+        old = db_load_save(save_id)
         existing_data_file = None
         old_history = []
         old_version = 1
-        if os.path.exists(existing_file):
-            with open(existing_file) as f:
-                old = json.load(f)
+        if old:
             existing_data_file = old.get('file_path')
             old_history = old.get('history', [])
             old_version = old.get('version', 1)
@@ -1528,7 +1433,7 @@ def save_analysis():
         if old_test_history:
             save_data['test_history'] = old_test_history
 
-    safe_write_json(os.path.join(SAVES_DIR, f'{save_id}.json'), save_data)
+    write_save(save_data)
 
     action = 'SAVE_VERSION' if overwrite_id else 'SAVE_NEW'
     log_action(action, f'id={save_id} name="{save_data["name"]}" v{new_version}')
@@ -1539,11 +1444,9 @@ def save_analysis():
 @login_required
 def load_save(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return "Save not found.", 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     log_action('LOAD', f'id={save_id} name="{data.get("name", "")}"')
     if 'params' not in data or 'col_map' not in data or 'file_path' not in data:
@@ -1561,11 +1464,9 @@ def load_save(save_id):
 @login_required
 def load_version(save_id, version_num):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return "Save not found.", 404
-    with open(save_file) as f:
-        data = json.load(f)
     # Find the history entry for this version
     entry = next((h for h in data.get('history', []) if h['version'] == version_num), None)
     if not entry:
@@ -1588,15 +1489,13 @@ def load_version(save_id, version_num):
 @login_required
 def delete_save(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
     data_file = os.path.join(SAVES_DIR, f'{save_id}_data.xlsx')
+    data = db_load_save(save_id)
     name = ''
-    if os.path.exists(save_file):
-        with open(save_file) as f:
-            data = json.load(f)
+    if data:
         check_portfolio_access(data)
         name = data.get('name', '')
-        os.remove(save_file)
+        db_delete_save(save_id)
     if os.path.exists(data_file):
         os.remove(data_file)
     log_action('DELETE', f'id={save_id} name="{name}"')
@@ -1661,11 +1560,9 @@ def print_view():
 @login_required
 def pv_plot(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return "Save not found.", 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     p = data.get('params', {})
     total_volume_gal = None
@@ -1693,9 +1590,9 @@ def pv_plot(save_id):
             avg_wt = round(weighted_wt / total_len, 4)
         min_wt = round(float(pts['WT'].min()), 4)
         total_length_ft = round(sec.length, 0)
-        target_gauge = round(sec.target_gauge, 0)
-        gauge_lower = round(sec.gauge_lower, 0)
-        gauge_upper = round(sec.gauge_upper, 0)
+        target_gauge = sec.target_gauge
+        gauge_lower = sec.gauge_lower
+        gauge_upper = sec.gauge_upper
     except Exception:
         total_length_ft = None
         target_gauge = None
@@ -1729,11 +1626,9 @@ def pv_save(save_id):
     # Limit request body size for PV data (5 MB max)
     if request.content_length and request.content_length > 5 * 1024 * 1024:
         return jsonify({'error': 'Payload too large'}), 413
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return jsonify({'error': 'Save not found'}), 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     payload = request.get_json()
     if payload is None:
@@ -1743,7 +1638,7 @@ def pv_save(save_id):
         return jsonify({'error': 'Missing or invalid readings array'}), 400
     payload['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     data['pv_data'] = payload
-    safe_write_json(save_file, data)
+    write_save(data)
     rows = len(payload.get('readings', []))
     log_action('PV_SAVE', f'id={save_id} name="{data.get("name", "")}" rows={rows}')
     return jsonify({'status': 'ok'})
@@ -1752,11 +1647,9 @@ def pv_save(save_id):
 @login_required
 def test_execution(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return "Save not found.", 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     p = data.get('params', {})
     avg_wt = None
@@ -1783,9 +1676,9 @@ def test_execution(save_id):
         if total_len > 0:
             avg_wt = round(weighted_wt / total_len, 4)
         total_length_ft = round(sec.length, 0)
-        target_gauge = round(sec.target_gauge, 0)
-        gauge_lower  = round(sec.gauge_lower, 0)
-        gauge_upper  = round(sec.gauge_upper, 0)
+        target_gauge = sec.target_gauge
+        gauge_lower  = sec.gauge_lower
+        gauge_upper  = sec.gauge_upper
         if avg_wt:
             k_factor = temp_correction_factor(get_od(p), avg_wt)
         # Elevations for MAOP certification
@@ -1819,6 +1712,7 @@ def test_execution(save_id):
         low_elev=low_elev,
         governing_code=data.get('project_info', {}).get('governing_code', ''),
         pv_data=data.get('pv_data', {}),
+        equipment_data=data.get('equipment_data', {}),
     )
 
 
@@ -1826,11 +1720,9 @@ def test_execution(save_id):
 @login_required
 def test_save(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return jsonify({'error': 'Save not found'}), 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     payload = request.get_json()
     if payload is None:
@@ -1841,7 +1733,7 @@ def test_save(save_id):
         return jsonify({'error': 'Test is finalized', 'code': 'finalized'}), 409
     payload['last_updated'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     data['test_data'] = payload
-    safe_write_json(save_file, data)
+    write_save(data)
     log_action('TEST_SAVE', f'id={save_id} rows={len(payload["readings"])}')
     return jsonify({'status': 'ok'})
 
@@ -1850,11 +1742,9 @@ def test_save(save_id):
 @login_required
 def test_finalize(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return jsonify({'error': 'Save not found'}), 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     payload = request.get_json()
     status = (payload or {}).get('status')
@@ -1866,7 +1756,7 @@ def test_finalize(save_id):
     td['status'] = status
     td['finalized_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     data['test_data'] = td
-    safe_write_json(save_file, data)
+    write_save(data)
     log_action('TEST_FINALIZE', f'id={save_id} status={status}')
     return jsonify({'status': 'ok'})
 
@@ -1875,11 +1765,9 @@ def test_finalize(save_id):
 @admin_required
 def test_unlock(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return jsonify({'error': 'Save not found'}), 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     td = data.get('test_data', {})
     if td.get('status') not in ('pass', 'fail'):
@@ -1887,7 +1775,7 @@ def test_unlock(save_id):
     td.pop('status', None)
     td.pop('finalized_at', None)
     data['test_data'] = td
-    safe_write_json(save_file, data)
+    write_save(data)
     log_action('TEST_UNLOCK', f'id={save_id} by={session["user"].get("email")}')
     return jsonify({'status': 'ok'})
 
@@ -1896,16 +1784,14 @@ def test_unlock(save_id):
 @login_required
 def test_pv_unlink(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return jsonify({'error': 'Save not found'}), 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     if data.get('test_data', {}).get('status') in ('pass', 'fail'):
         return jsonify({'error': 'Test is finalized — unlock before unlinking PV data'}), 409
     data.pop('pv_data', None)
-    safe_write_json(save_file, data)
+    write_save(data)
     log_action('PV_UNLINK', f'id={save_id}')
     return jsonify({'status': 'ok'})
 
@@ -1914,11 +1800,9 @@ def test_pv_unlink(save_id):
 @login_required
 def test_retest(save_id):
     validate_save_id(save_id)
-    save_file = os.path.join(SAVES_DIR, f'{save_id}.json')
-    if not os.path.exists(save_file):
+    data = db_load_save(save_id)
+    if data is None:
         return jsonify({'error': 'Save not found'}), 404
-    with open(save_file) as f:
-        data = json.load(f)
     check_portfolio_access(data)
     td = data.get('test_data', {})
     if td.get('status') != 'fail':
@@ -1932,9 +1816,67 @@ def test_retest(save_id):
         'timezone': td.get('timezone'),
         'last_updated': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     }
-    safe_write_json(save_file, data)
+    write_save(data)
     log_action('TEST_RETEST', f'id={save_id} attempt={len(history) + 1}')
     return jsonify({'status': 'ok'})
+
+
+@app.route('/equipment/<save_id>', methods=['GET', 'POST'])
+@login_required
+def equipment_setup(save_id):
+    validate_save_id(save_id)
+    data = db_load_save(save_id)
+    if data is None:
+        return "Save not found.", 404
+    check_portfolio_access(data)
+
+    INSTRUMENT_TYPES = [
+        ('Pressure Recorder', 'rec',    '%'),
+        ('Pressure Gauge',    'gauge',  '%'),
+        ('Deadweights',       'dw',     '%'),
+        ('Ambient Temp',      'amb',    '°F'),
+        ('Pipe Temp',         'pipe',   '°F'),
+        ('Ground Temp',       'ground', '°F'),
+    ]
+
+    if request.method == 'POST':
+        eq = {}
+        for _label, key, unit in INSTRUMENT_TYPES:
+            eq[key] = {
+                'primary': {
+                    'serial':        request.form.get(f'{key}_pri_serial', '').strip(),
+                    'cal_date':      request.form.get(f'{key}_pri_cal_date', '').strip(),
+                    'exp_date':      request.form.get(f'{key}_pri_exp_date', '').strip(),
+                    'accuracy':      request.form.get(f'{key}_pri_accuracy', '').strip(),
+                    'accuracy_unit': request.form.get(f'{key}_pri_accuracy_unit', unit),
+                    'station':       request.form.get(f'{key}_pri_station', '').strip(),
+                    'skip':          bool(request.form.get(f'{key}_pri_skip')),
+                },
+                'secondary': {
+                    'serial':        request.form.get(f'{key}_sec_serial', '').strip(),
+                    'cal_date':      request.form.get(f'{key}_sec_cal_date', '').strip(),
+                    'exp_date':      request.form.get(f'{key}_sec_exp_date', '').strip(),
+                    'accuracy':      request.form.get(f'{key}_sec_accuracy', '').strip(),
+                    'accuracy_unit': request.form.get(f'{key}_sec_accuracy_unit', unit),
+                    'station':       request.form.get(f'{key}_sec_station', '').strip(),
+                    'skip':          bool(request.form.get(f'{key}_sec_skip')),
+                },
+            }
+        data['equipment_data'] = eq
+        write_save(data)
+        log_action('EQUIPMENT_SAVE', f'id={save_id}')
+        return redirect(url_for('test_execution', save_id=save_id))
+
+    portfolios = load_portfolios()
+    pf_name = next((pf['name'] for pf in portfolios if pf['id'] == data.get('portfolio_id')), None)
+    eq = data.get('equipment_data', {})
+    return render_template('equipment.html',
+        save_id=save_id,
+        save_name=data.get('name', 'Untitled'),
+        portfolio_name=pf_name,
+        eq=eq,
+        instrument_types=INSTRUMENT_TYPES,
+    )
 
 
 if __name__ == '__main__':
