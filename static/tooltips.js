@@ -3,38 +3,34 @@
     bubble.className = 'tt-bubble';
     document.body.appendChild(bubble);
 
-    var currentText = null;
-
     document.addEventListener('mouseover', function (e) {
         var el = e.target.closest ? e.target.closest('[data-tt]') : null;
-        currentText = (el && el.dataset.tt) ? el.dataset.tt : null;
-        if (!currentText) bubble.style.display = 'none';
+        if (!el || !el.dataset.tt) return;
+
+        bubble.textContent = el.dataset.tt;
+        bubble.style.display = 'block';
+
+        var r = el.getBoundingClientRect();
+        var bh = bubble.offsetHeight || 60;
+        var bw = bubble.offsetWidth  || 240;
+
+        // Default: above the element, left-aligned
+        var x = r.left;
+        var y = r.top - bh - 8;
+
+        // Flip below if no room above
+        if (y < 8) y = r.bottom + 8;
+
+        // Shift left if overflowing right edge
+        if (x + bw > window.innerWidth - 8) x = window.innerWidth - bw - 8;
+        if (x < 8) x = 8;
+
+        bubble.style.left = x + 'px';
+        bubble.style.top  = y + 'px';
     });
 
     document.addEventListener('mouseout', function (e) {
         var el = e.target.closest ? e.target.closest('[data-tt]') : null;
-        if (el) {
-            currentText = null;
-            bubble.style.display = 'none';
-        }
-    });
-
-    document.addEventListener('mousemove', function (e) {
-        if (!currentText) return;
-
-        if (bubble.style.display !== 'block') {
-            bubble.textContent = currentText;
-            bubble.style.display = 'block';
-        }
-
-        var x = e.clientX + 14;
-        var y = e.clientY + 18;
-
-        // Keep within viewport — check after placing
-        if (x + 240 > window.innerWidth - 8)  x = e.clientX - 250;
-        if (y + 80  > window.innerHeight - 8)  y = e.clientY - 90;
-
-        bubble.style.left = x + 'px';
-        bubble.style.top  = y + 'px';
+        if (el) bubble.style.display = 'none';
     });
 })();
