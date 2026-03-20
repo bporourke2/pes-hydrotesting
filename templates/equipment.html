@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Equipment Setup — {{ save_name }}</title>
+    <style>
+        :root { --sidebar-width: 260px; --primary-bg: #2c3e50; --accent: #16a085; --text-light: #ecf0f1; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+
+        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .sidebar-header .logo-link img { max-width: 110px; display: block; }
+        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
+        .sidebar-header a:hover { color: white; }
+        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
+        .sidebar-footer { padding: 20px; margin-top: auto; border-top: 1px solid #455a64; }
+        .btn { display: block; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; font-family: inherit; text-decoration: none; }
+        .btn-accent { background: var(--accent); color: white; }
+        .btn-skip { background: #455a64; color: #bdc3c7; margin-top: 8px; }
+        .btn:hover { opacity: 0.88; }
+        .hint { font-size: 0.75em; color: #7f8c8d; margin-top: 6px; text-align: center; }
+
+        .main { margin-left: var(--sidebar-width); flex: 1; padding: 28px 32px; }
+        .main h1 { font-size: 1.25em; margin: 0 0 6px; font-weight: 700; }
+        .main .subtitle { color: #7f8c8d; font-size: 0.85em; margin: 0 0 24px; }
+
+        /* Instrument grid */
+        .instrument-table { width: 100%; border-collapse: collapse; }
+        .instrument-table th {
+            background: #16213e; color: #7f8c8d; font-size: 0.72em; text-transform: uppercase;
+            letter-spacing: 0.6px; padding: 8px 10px; text-align: left; border-bottom: 2px solid #2a3a5a;
+        }
+        .instrument-table th.center { text-align: center; }
+        .instrument-table td { padding: 6px 8px; border-bottom: 1px solid #1e2d45; vertical-align: middle; }
+        .instrument-table tr.primary-row td { background: #16213e; }
+        .instrument-table tr.secondary-row td { background: #111827; }
+        .instrument-table tr.secondary-row td.type-cell { padding-left: 22px; color: #7f8c8d; font-size: 0.85em; }
+        .instrument-table tr.primary-row td.type-cell { font-weight: 600; color: #ecf0f1; }
+        .divider-row td { padding: 4px 0; background: #1a1a2e !important; border: none; }
+
+        .instrument-table input[type="text"],
+        .instrument-table input[type="date"],
+        .instrument-table input[type="number"] {
+            width: 100%; padding: 5px 8px; background: #2c3e50; border: 1px solid #455a64;
+            color: white; border-radius: 4px; font-size: 0.84em; font-family: inherit;
+        }
+        .instrument-table input:focus { outline: none; border-color: var(--accent); }
+        .instrument-table input.skipped { opacity: 0.35; pointer-events: none; }
+
+        .skip-wrap { display: flex; justify-content: center; align-items: center; gap: 0; }
+        .skip-wrap input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+        .acc-cell { width: 140px; }
+        .acc-wrap { display: flex; gap: 4px; }
+        .acc-wrap input { flex: 1; min-width: 0; }
+        .acc-wrap select { width: 52px; padding: 5px 4px; background: #2c3e50; border: 1px solid #455a64; color: #bdc3c7; border-radius: 4px; font-size: 0.82em; font-family: inherit; cursor: pointer; }
+        .acc-wrap select:focus { outline: none; border-color: var(--accent); }
+        .sta-cell { width: 110px; }
+        .date-cell { width: 130px; }
+        .skip-cell { width: 54px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <a class="logo-link" href="/"><img src="/static/peslogo.png" alt="PES"></a>
+        <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
+        <h2>Equipment Setup</h2>
+        <p>{{ save_name }}{% if portfolio_name %} &nbsp;·&nbsp; {{ portfolio_name }}{% endif %}</p>
+    </div>
+    <div class="sidebar-footer">
+        <button form="eq-form" type="submit" class="btn btn-accent">Save &amp; Continue to Test &#8594;</button>
+        <a href="/test/{{ save_id }}" class="btn btn-skip">Skip &#8594;</a>
+        <p class="hint">Equipment data is saved with the project and not required to proceed.</p>
+    </div>
+</div>
+
+<div class="main">
+    <h1>Test Equipment</h1>
+    <p class="subtitle">Enter serial numbers, calibration dates, and accuracy for all instruments used during testing. Secondary instruments refer to a second unit deployed at a remote station.</p>
+
+    <form id="eq-form" method="POST">
+    <table class="instrument-table">
+        <thead>
+            <tr>
+                <th style="width:180px;">Instrument</th>
+                <th>Serial #</th>
+                <th class="date-cell">Cal. Date</th>
+                <th class="date-cell">Exp. Date</th>
+                <th class="acc-cell">Accuracy</th>
+                <th class="sta-cell">Station</th>
+                <th class="skip-cell center">Skip</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for label, key, unit in instrument_types %}
+        {% set pri = eq.get(key, {}).get('primary', {}) %}
+        {% set sec = eq.get(key, {}).get('secondary', {}) %}
+
+        {# Primary row #}
+        <tr class="primary-row">
+            <td class="type-cell">{{ label }}</td>
+            <td><input type="text" name="{{ key }}_pri_serial" value="{{ pri.get('serial', '') }}" placeholder="Serial #"></td>
+            <td><input type="date" name="{{ key }}_pri_cal_date" value="{{ pri.get('cal_date', '') }}"></td>
+            <td><input type="date" name="{{ key }}_pri_exp_date" value="{{ pri.get('exp_date', '') }}"></td>
+            <td class="acc-cell">
+                <div class="acc-wrap">
+                    <input type="number" step="any" name="{{ key }}_pri_accuracy" value="{{ pri.get('accuracy', '') }}" placeholder="#">
+                    <select name="{{ key }}_pri_accuracy_unit">
+                        <option value="%" {% if pri.get('accuracy_unit', unit) == '%' %}selected{% endif %}>%</option>
+                        <option value="°F" {% if pri.get('accuracy_unit', unit) == '°F' %}selected{% endif %}>°F</option>
+                    </select>
+                </div>
+            </td>
+            <td><input type="text" name="{{ key }}_pri_station" value="{{ pri.get('station', '') }}" placeholder="Station"></td>
+            <td class="skip-cell">
+                <div class="skip-wrap">
+                    <input type="checkbox" name="{{ key }}_pri_skip" id="{{ key }}_pri_skip" onchange="toggleSkip(this, '{{ key }}_pri')" {% if pri.get('skip') %}checked{% endif %}>
+                </div>
+            </td>
+        </tr>
+
+        {# Secondary row #}
+        <tr class="secondary-row">
+            <td class="type-cell">&#8627; Secondary</td>
+            <td><input type="text" name="{{ key }}_sec_serial" value="{{ sec.get('serial', '') }}" placeholder="Serial #" class="{% if sec.get('skip') %}skipped{% endif %}"></td>
+            <td><input type="date" name="{{ key }}_sec_cal_date" value="{{ sec.get('cal_date', '') }}" class="{% if sec.get('skip') %}skipped{% endif %}"></td>
+            <td><input type="date" name="{{ key }}_sec_exp_date" value="{{ sec.get('exp_date', '') }}" class="{% if sec.get('skip') %}skipped{% endif %}"></td>
+            <td class="acc-cell">
+                <div class="acc-wrap">
+                    <input type="number" step="any" name="{{ key }}_sec_accuracy" value="{{ sec.get('accuracy', '') }}" placeholder="#" class="{% if sec.get('skip') %}skipped{% endif %}">
+                    <select name="{{ key }}_sec_accuracy_unit" class="{% if sec.get('skip') %}skipped{% endif %}">
+                        <option value="%" {% if sec.get('accuracy_unit', unit) == '%' %}selected{% endif %}>%</option>
+                        <option value="°F" {% if sec.get('accuracy_unit', unit) == '°F' %}selected{% endif %}>°F</option>
+                    </select>
+                </div>
+            </td>
+            <td><input type="text" name="{{ key }}_sec_station" value="{{ sec.get('station', '') }}" placeholder="Station" class="{% if sec.get('skip') %}skipped{% endif %}"></td>
+            <td class="skip-cell">
+                <div class="skip-wrap">
+                    <input type="checkbox" name="{{ key }}_sec_skip" id="{{ key }}_sec_skip" onchange="toggleSkip(this, '{{ key }}_sec')" {% if sec.get('skip') %}checked{% endif %}>
+                </div>
+            </td>
+        </tr>
+
+        {# Spacer between instrument groups #}
+        {% if not loop.last %}
+        <tr class="divider-row"><td colspan="7"></td></tr>
+        {% endif %}
+
+        {% endfor %}
+        </tbody>
+    </table>
+    </form>
+</div>
+
+<script>
+function toggleSkip(checkbox, prefix) {
+    var row = checkbox.closest('tr');
+    row.querySelectorAll('input[type="text"], input[type="date"], input[type="number"]').forEach(function(inp) {
+        inp.classList.toggle('skipped', checkbox.checked);
+    });
+}
+</script>
+
+</body>
+</html>

@@ -1712,6 +1712,7 @@ def test_execution(save_id):
         low_elev=low_elev,
         governing_code=data.get('project_info', {}).get('governing_code', ''),
         pv_data=data.get('pv_data', {}),
+        equipment_data=data.get('equipment_data', {}),
     )
 
 
@@ -1818,6 +1819,64 @@ def test_retest(save_id):
     write_save(data)
     log_action('TEST_RETEST', f'id={save_id} attempt={len(history) + 1}')
     return jsonify({'status': 'ok'})
+
+
+@app.route('/equipment/<save_id>', methods=['GET', 'POST'])
+@login_required
+def equipment_setup(save_id):
+    validate_save_id(save_id)
+    data = db_load_save(save_id)
+    if data is None:
+        return "Save not found.", 404
+    check_portfolio_access(data)
+
+    INSTRUMENT_TYPES = [
+        ('Pressure Recorder', 'rec',    '%'),
+        ('Pressure Gauge',    'gauge',  '%'),
+        ('Deadweights',       'dw',     '%'),
+        ('Ambient Temp',      'amb',    '°F'),
+        ('Pipe Temp',         'pipe',   '°F'),
+        ('Ground Temp',       'ground', '°F'),
+    ]
+
+    if request.method == 'POST':
+        eq = {}
+        for _label, key, unit in INSTRUMENT_TYPES:
+            eq[key] = {
+                'primary': {
+                    'serial':        request.form.get(f'{key}_pri_serial', '').strip(),
+                    'cal_date':      request.form.get(f'{key}_pri_cal_date', '').strip(),
+                    'exp_date':      request.form.get(f'{key}_pri_exp_date', '').strip(),
+                    'accuracy':      request.form.get(f'{key}_pri_accuracy', '').strip(),
+                    'accuracy_unit': request.form.get(f'{key}_pri_accuracy_unit', unit),
+                    'station':       request.form.get(f'{key}_pri_station', '').strip(),
+                    'skip':          bool(request.form.get(f'{key}_pri_skip')),
+                },
+                'secondary': {
+                    'serial':        request.form.get(f'{key}_sec_serial', '').strip(),
+                    'cal_date':      request.form.get(f'{key}_sec_cal_date', '').strip(),
+                    'exp_date':      request.form.get(f'{key}_sec_exp_date', '').strip(),
+                    'accuracy':      request.form.get(f'{key}_sec_accuracy', '').strip(),
+                    'accuracy_unit': request.form.get(f'{key}_sec_accuracy_unit', unit),
+                    'station':       request.form.get(f'{key}_sec_station', '').strip(),
+                    'skip':          bool(request.form.get(f'{key}_sec_skip')),
+                },
+            }
+        data['equipment_data'] = eq
+        write_save(data)
+        log_action('EQUIPMENT_SAVE', f'id={save_id}')
+        return redirect(url_for('test_execution', save_id=save_id))
+
+    portfolios = load_portfolios()
+    pf_name = next((pf['name'] for pf in portfolios if pf['id'] == data.get('portfolio_id')), None)
+    eq = data.get('equipment_data', {})
+    return render_template('equipment.html',
+        save_id=save_id,
+        save_name=data.get('name', 'Untitled'),
+        portfolio_name=pf_name,
+        eq=eq,
+        instrument_types=INSTRUMENT_TYPES,
+    )
 
 
 if __name__ == '__main__':

@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Hydrotest Engineering Analysis</title>
     <link rel="stylesheet" href="/static/tooltips.css">
-    <script src="/static/tooltips.js" defer></script>
     <script src="/static/plotly-2.35.2.min.js"></script>
     <style>
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
@@ -153,7 +152,7 @@
                 <p style="font-size:0.75em; color:#95a5a6; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Test Execution</p>
                 <a href="/pv/{{ save_id }}" style="display:block; padding:10px; background:#8e44ad; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em;">PV Plot &#8594;</a>
                 <a href="/rupture/{{ save_id }}" style="display:block; padding:10px; background:#c0392b; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Rupture Analysis &#8594;</a>
-                <a href="/test/{{ save_id }}" style="display:block; padding:10px; background:#16a085; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Test Execution &#8594;</a>
+                <a href="/equipment/{{ save_id }}" style="display:block; padding:10px; background:#16a085; color:white; text-align:center; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.9em; margin-top:8px;">Test Execution &#8594;</a>
             </div>
             {% endif %}
         </div>

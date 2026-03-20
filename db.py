@@ -57,17 +57,18 @@ class Company(Base):
 
 class Save(Base):
     __tablename__ = 'saves'
-    id           = Column(String, primary_key=True)
-    version      = Column(Integer, default=1)
-    name         = Column(String)
-    notes        = Column(Text)
-    timestamp    = Column(String)
-    portfolio_id = Column(String)
-    owner_sub    = Column(String)
-    file_path    = Column(String)
-    params       = Column(Text)   # JSON
-    col_map      = Column(Text)   # JSON
-    project_info = Column(Text)   # JSON
+    id             = Column(String, primary_key=True)
+    version        = Column(Integer, default=1)
+    name           = Column(String)
+    notes          = Column(Text)
+    timestamp      = Column(String)
+    portfolio_id   = Column(String)
+    owner_sub      = Column(String)
+    file_path      = Column(String)
+    params         = Column(Text)   # JSON
+    col_map        = Column(Text)   # JSON
+    project_info   = Column(Text)   # JSON
+    equipment_data = Column(Text)   # JSON
 
 
 class SaveHistory(Base):
@@ -146,7 +147,19 @@ def get_engine():
             dbapi_con.execute('PRAGMA foreign_keys=ON')
 
         Base.metadata.create_all(_engine)
+        _add_missing_columns(_engine)
     return _engine
+
+
+def _add_missing_columns(engine):
+    """Add columns introduced after the initial schema (safe to call on every start)."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(saves)"))
+        existing = {row[1] for row in result}
+        if 'equipment_data' not in existing:
+            conn.execute(text("ALTER TABLE saves ADD COLUMN equipment_data TEXT"))
+            conn.commit()
 
 
 def _factory():
@@ -187,17 +200,18 @@ def _j(text, default=None):
 def _save_row_to_dict(s):
     """Convert a Save ORM row to the flat dict used throughout app.py."""
     return {
-        'id':           s.id,
-        'version':      s.version,
-        'name':         s.name or '',
-        'notes':        s.notes or '',
-        'timestamp':    s.timestamp,
-        'portfolio_id': s.portfolio_id,
-        'owner_sub':    s.owner_sub,
-        'file_path':    s.file_path,
-        'params':       _j(s.params, {}),
-        'col_map':      _j(s.col_map, {}),
-        'project_info': _j(s.project_info, {}),
+        'id':             s.id,
+        'version':        s.version,
+        'name':           s.name or '',
+        'notes':          s.notes or '',
+        'timestamp':      s.timestamp,
+        'portfolio_id':   s.portfolio_id,
+        'owner_sub':      s.owner_sub,
+        'file_path':      s.file_path,
+        'params':         _j(s.params, {}),
+        'col_map':        _j(s.col_map, {}),
+        'project_info':   _j(s.project_info, {}),
+        'equipment_data': _j(s.equipment_data, {}),
     }
 
 
@@ -317,9 +331,11 @@ def write_save(data):
         s.portfolio_id = data.get('portfolio_id')
         s.owner_sub    = data.get('owner_sub')
         s.file_path    = data.get('file_path')
-        s.params       = json.dumps(data.get('params', {}))
-        s.col_map      = json.dumps(data.get('col_map', {}))
-        s.project_info = json.dumps(data.get('project_info', {}))
+        s.params         = json.dumps(data.get('params', {}))
+        s.col_map        = json.dumps(data.get('col_map', {}))
+        s.project_info   = json.dumps(data.get('project_info', {}))
+        if 'equipment_data' in data:
+            s.equipment_data = json.dumps(data['equipment_data'])
 
         # History — replace only when provided
         if 'history' in data:
