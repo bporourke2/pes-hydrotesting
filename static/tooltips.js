@@ -1,16 +1,32 @@
 (function () {
     var bubble = document.createElement('div');
     bubble.className = 'tt-bubble';
+    // Start off-screen so it never flashes in a corner
+    bubble.style.left = '-9999px';
+    bubble.style.top  = '-9999px';
     document.body.appendChild(bubble);
 
-    var active = false;
+    function position(clientX, clientY) {
+        var x = clientX + 14;
+        var y = clientY + 18;
+        bubble.style.left = x + 'px';
+        bubble.style.top  = y + 'px';
+        // Flip if overflowing viewport edges
+        var rect = bubble.getBoundingClientRect();
+        if (rect.right > window.innerWidth - 8) {
+            bubble.style.left = (clientX - rect.width - 10) + 'px';
+        }
+        if (rect.bottom > window.innerHeight - 8) {
+            bubble.style.top = (clientY - rect.height - 10) + 'px';
+        }
+    }
 
     document.addEventListener('mouseover', function (e) {
         var el = e.target.closest ? e.target.closest('[data-tt]') : null;
         if (el && el.dataset.tt) {
             bubble.textContent = el.dataset.tt;
             bubble.style.display = 'block';
-            active = true;
+            position(e.clientX, e.clientY);
         }
     });
 
@@ -18,27 +34,14 @@
         var el = e.target.closest ? e.target.closest('[data-tt]') : null;
         if (el) {
             bubble.style.display = 'none';
-            active = false;
+            bubble.style.left = '-9999px';
+            bubble.style.top  = '-9999px';
         }
     });
 
     document.addEventListener('mousemove', function (e) {
-        if (!active) return;
-        var x = e.clientX + 14;
-        var y = e.clientY + 18;
-
-        // Flip left if bubble would overflow right edge
-        bubble.style.left = x + 'px';
-        bubble.style.top  = y + 'px';
-
-        var rect = bubble.getBoundingClientRect();
-        if (rect.right > window.innerWidth - 8) {
-            x = e.clientX - rect.width - 10;
-            bubble.style.left = x + 'px';
-        }
-        if (rect.bottom > window.innerHeight - 8) {
-            y = e.clientY - rect.height - 10;
-            bubble.style.top = y + 'px';
+        if (bubble.style.display === 'block') {
+            position(e.clientX, e.clientY);
         }
     });
 })();
