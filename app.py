@@ -1199,7 +1199,7 @@ def results():
                 form_dict['od'] = od_val
 
         # Handle numeric fields to convert strings to floats, fallback if invalid or empty
-        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'smys_threshold', 'unrestrained_length', 'head_factor']
+        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'override_gauge_lower', 'smys_threshold', 'unrestrained_length', 'head_factor']
         for key in numeric_keys:
             if key in form_dict:
                 value = form_dict[key].strip() if form_dict[key] else ''
@@ -1209,7 +1209,7 @@ def results():
                     except ValueError:
                         form_dict[key] = p.get(key)  # Fallback to previous if invalid
                 else:
-                    if key in ['override_prepack', 'override_vent', 'unrestrained_length']:
+                    if key in ['override_prepack', 'override_vent', 'override_gauge_lower', 'unrestrained_length']:
                         form_dict[key] = None  # Clear to default when blank
                     else:
                         form_dict[key] = p.get(key)  # Keep previous if empty for non-overrides
@@ -1590,9 +1590,9 @@ def pv_plot(save_id):
             avg_wt = round(weighted_wt / total_len, 4)
         min_wt = round(float(pts['WT'].min()), 4)
         total_length_ft = round(sec.length, 0)
-        target_gauge = round(sec.target_gauge, 0)
-        gauge_lower = round(sec.gauge_lower, 0)
-        gauge_upper = round(sec.gauge_upper, 0)
+        target_gauge = sec.target_gauge
+        gauge_lower = sec.gauge_lower
+        gauge_upper = sec.gauge_upper
     except Exception:
         total_length_ft = None
         target_gauge = None
@@ -1676,9 +1676,9 @@ def test_execution(save_id):
         if total_len > 0:
             avg_wt = round(weighted_wt / total_len, 4)
         total_length_ft = round(sec.length, 0)
-        target_gauge = round(sec.target_gauge, 0)
-        gauge_lower  = round(sec.gauge_lower, 0)
-        gauge_upper  = round(sec.gauge_upper, 0)
+        target_gauge = sec.target_gauge
+        gauge_lower  = sec.gauge_lower
+        gauge_upper  = sec.gauge_upper
         if avg_wt:
             k_factor = temp_correction_factor(get_od(p), avg_wt)
         # Elevations for MAOP certification

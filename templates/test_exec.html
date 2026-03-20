@@ -171,8 +171,8 @@
     <div class="sidebar-section">
         <h3>Test Parameters</h3>
         {% if target_gauge %}
-        <div class="param-row"><span class="param-label">Target Gauge</span><span class="param-val">{{ target_gauge|int }} psig</span></div>
-        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Acceptable test window at the test site gauge">Test Window</span></span><span class="param-val">{{ gauge_lower|int }}–{{ gauge_upper|int }} psig</span></div>
+        <div class="param-row"><span class="param-label">Target Gauge</span><span class="param-val">{{ "%.1f"|format(target_gauge) }} psig</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Acceptable test window at the test site gauge">Test Window</span></span><span class="param-val">{{ "%.1f"|format(gauge_lower) }}–{{ "%.1f"|format(gauge_upper) }} psig</span></div>
         {% endif %}
         {% if k_factor %}
         <div class="param-row">
