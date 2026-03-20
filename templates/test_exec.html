@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Execution — {{ save_name }}</title>
+    <link rel="stylesheet" href="/static/tooltips.css">
+    <script src="/static/tooltips.js" defer></script>
+    <script src="/static/plotly-2.35.2.min.js"></script>
+    <style>
+        :root { --sidebar-width: 340px; --primary-bg: #2c3e50; --accent: #16a085; --text-light: #ecf0f1; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+
+        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .sidebar-header .logo-link img { max-width: 110px; display: block; }
+        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
+        .sidebar-header a:hover { color: white; }
+        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
+        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #455a64; }
+        .sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; }
+        .param-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 0.84em; }
+        .param-label { color: #95a5a6; }
+        .param-val { color: #ecf0f1; font-weight: 600; }
+        label { display: block; font-size: 0.82em; color: #bdc3c7; margin-bottom: 3px; margin-top: 10px; }
+        label:first-child { margin-top: 0; }
+        input[type="number"] { width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit; }
+        input[type="number"]:focus { outline: none; border-color: var(--accent); }
+        .btn { display: block; width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; font-family: inherit; }
+        .btn-accent { background: var(--accent); color: white; }
+        .btn-danger { background: #c0392b; color: white; }
+        .btn:hover { opacity: 0.88; }
+        .save-status { font-size: 0.78em; text-align: center; margin-top: 6px; height: 16px; transition: opacity 0.3s; }
+        .save-status.ok  { color: #27ae60; }
+        .save-status.err { color: #e74c3c; }
+        .hint { font-size: 0.75em; color: #7f8c8d; margin-top: 4px; }
+
+        .main { margin-left: var(--sidebar-width); flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+        /* Status banner */
+        .status-banner { border-radius: 8px; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+        .status-banner.stable  { background: rgba(39,174,96,0.15);  border: 1px solid rgba(39,174,96,0.4); }
+        .status-banner.monitor { background: rgba(243,156,18,0.15); border: 1px solid rgba(243,156,18,0.4); }
+        .status-banner.leak    { background: rgba(231,76,60,0.15);  border: 1px solid rgba(231,76,60,0.4); }
+        .status-banner.waiting { background: rgba(127,140,141,0.12); border: 1px solid rgba(127,140,141,0.3); }
+        .status-label { font-size: 1.15em; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .status-meta { font-size: 0.84em; color: #bdc3c7; display: flex; gap: 24px; }
+        .status-meta span { display: flex; flex-direction: column; }
+        .status-meta strong { font-size: 1.1em; color: #ecf0f1; }
+
+        /* Charts */
+        .chart-box { background: #16213e; border-radius: 8px; padding: 18px 20px; }
+        .chart-box h3 { margin: 0 0 12px; font-size: 0.95em; color: #bdc3c7; }
+
+        /* Table */
+        .table-box { background: #16213e; border-radius: 8px; padding: 18px 20px; }
+        .table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .table-header h3 { margin: 0; font-size: 0.95em; color: #bdc3c7; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 1250px; }
+        th { background: #1a252f; padding: 8px 6px; text-align: center; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: #95a5a6; border-bottom: 1px solid #2c3e50; white-space: nowrap; }
+        th:first-child { text-align: left; padding-left: 8px; }
+        td { padding: 3px 4px; border-bottom: 1px solid #1a252f; text-align: center; vertical-align: middle; }
+        td:first-child { text-align: left; font-size: 0.8em; color: #7f8c8d; padding-left: 8px; min-width: 28px; }
+        td input[type="number"], td input[type="time"], td input[type="text"] {
+            width: 100%; padding: 5px 6px; background: #0d1b2a; border: 1px solid #2c3e50;
+            color: white; border-radius: 3px; font-size: 0.85em; font-family: inherit; text-align: center;
+        }
+        td input[type="text"] { text-align: left; }
+        td input:focus { outline: none; border-color: var(--accent); background: #0a1520; }
+        /* Hide the native picker icon so Tab exits naturally after AM/PM */
+        input.inp-time::-webkit-calendar-picker-indicator { display: none; }
+        .time-wrap { display: flex; align-items: center; gap: 2px; }
+        .time-wrap input { flex: 1; min-width: 0; }
+        .time-pick-btn { flex-shrink: 0; background: none; border: 1px solid #2c3e50; border-radius: 3px; color: #7f8c8d; cursor: pointer; font-size: 0.85em; padding: 4px 5px; line-height: 1; }
+        .time-pick-btn:hover { color: var(--accent); border-color: var(--accent); }
+        td select.inp-event {
+            width: 100%; padding: 5px 4px; background: #0d1b2a; border: 1px solid #2c3e50;
+            color: #bdc3c7; border-radius: 3px; font-size: 0.82em; font-family: inherit; cursor: pointer;
+        }
+        td select.inp-event:focus { outline: none; border-color: var(--accent); }
+        td.computed { font-size: 0.85em; font-family: monospace; color: #bdc3c7; }
+        td.dev-ok    { font-size: 0.85em; font-family: monospace; color: #27ae60; font-weight: 600; }
+        td.dev-warn  { font-size: 0.85em; font-family: monospace; color: #f39c12; font-weight: 600; }
+        td.dev-leak  { font-size: 0.85em; font-family: monospace; color: #e74c3c; font-weight: 600; }
+        td.del-cell  { width: 32px; }
+        td.del-cell button { background: none; border: none; color: #7f8c8d; cursor: pointer; font-size: 1em; padding: 4px 6px; border-radius: 3px; }
+        td.del-cell button:hover { color: #e74c3c; }
+        .add-row-btn { margin-top: 10px; padding: 7px 16px; background: #2c3e50; color: #bdc3c7; border: 1px dashed #455a64; border-radius: 4px; cursor: pointer; font-size: 0.85em; width: 100%; font-family: inherit; }
+        .add-row-btn:hover { background: #34495e; color: white; }
+
+        /* Row highlighting by event type */
+        tr.ref-row td { background: rgba(22,160,133,0.08); }
+        tr.ref-row td:first-child::after { content: ' ref'; color: var(--accent); font-size: 0.78em; margin-left: 3px; }
+        tr.ev-test-start td  { background: rgba(39,174,96,0.06); }
+        tr.ev-leak-check td  { background: rgba(243,156,18,0.06); }
+        tr.ev-test-end td    { background: rgba(52,152,219,0.06); }
+        tr.ev-pv-start td    { background: rgba(142,68,173,0.08); }
+        tr.ev-pv-end td      { background: rgba(142,68,173,0.08); }
+
+        /* Finalize buttons */
+        .btn-pass { background: rgba(39,174,96,0.18); border: 1px solid rgba(39,174,96,0.55); color: #27ae60; }
+        .btn-pass:hover { background: rgba(39,174,96,0.32); }
+        .btn-fail-btn { background: rgba(231,76,60,0.18); border: 1px solid rgba(231,76,60,0.55); color: #e74c3c; }
+        .btn-fail-btn:hover { background: rgba(231,76,60,0.32); }
+        .finalized-badge { text-align: center; padding: 12px 8px; border-radius: 6px; font-size: 1.05em; font-weight: 700; letter-spacing: 0.5px; }
+        .finalized-badge.pass { background: rgba(39,174,96,0.15); border: 1px solid rgba(39,174,96,0.45); color: #27ae60; }
+        .finalized-badge.fail { background: rgba(231,76,60,0.15); border: 1px solid rgba(231,76,60,0.45); color: #e74c3c; }
+        /* Locked state */
+        body.test-locked #readings-body input,
+        body.test-locked #readings-body select { opacity: 0.6; cursor: not-allowed; }
+        body.test-locked .add-row-btn { display: none; }
+        body.test-locked #test-date,
+        body.test-locked #test-tz,
+        body.test-locked #leak-threshold,
+        body.test-locked #cert-install-date,
+        body.test-locked #cert-converted,
+        body.test-locked #cert-class { opacity: 0.6; cursor: not-allowed; }
+        /* Volume balance / bleed */
+        tr.ev-bleed td { background: rgba(243,156,18,0.10); }
+        .released-wrap { display: flex; gap: 2px; align-items: center; }
+        .released-wrap input { flex: 1; min-width: 0; }
+        select.inp-released-unit { padding: 5px 2px; background: #0d1b2a; border: 1px solid #2c3e50; color: #bdc3c7; border-radius: 3px; font-size: 0.78em; font-family: inherit; cursor: pointer; width: 36px; }
+        select.inp-released-unit:focus { outline: none; border-color: var(--accent); }
+        td.cell-dv  { font-size: 0.85em; font-family: monospace; color: #bdc3c7; }
+        td.cell-cum { font-size: 0.85em; font-family: monospace; }
+        td.cell-cum.loss-ok  { color: #27ae60; }
+        td.cell-cum.loss-mid { color: #f39c12; font-weight: 600; }
+        td.cell-cum.loss-bad { color: #e74c3c; font-weight: 600; }
+        /* PV start modal */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:500; align-items:center; justify-content:center; }
+        .modal-overlay.active { display:flex; }
+        .modal-box { background:#2c3e50; border-radius:8px; padding:24px; width:280px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
+        .modal-box h3 { margin:0 0 14px; font-size:1em; }
+        .modal-box label { display:block; font-size:0.82em; color:#bdc3c7; margin-bottom:6px; }
+        .modal-box input[type="time"] { width:100%; padding:8px 10px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:1em; font-family:inherit; }
+        .modal-box input[type="time"]:focus { outline:none; border-color:var(--accent); }
+        .modal-actions { display:flex; gap:8px; margin-top:16px; }
+        /* Attempt badge */
+        .attempt-badge { display: inline-block; background: rgba(243,156,18,0.2); border: 1px solid rgba(243,156,18,0.4); color: #f39c12; font-size: 0.72em; padding: 1px 7px; border-radius: 10px; vertical-align: middle; margin-left: 6px; font-weight: 600; }
+        /* User badge */
+        .user-badge { position: fixed; top: 16px; right: 20px; font-size: 0.82em; color: #95a5a6; z-index: 200; background: rgba(22,33,62,0.92); padding: 4px 10px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+        .user-badge a { text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div class="user-badge">
+    {{ session.user.name or session.user.email }}
+    {% if user_is_admin %}&nbsp;·&nbsp;<a href="/settings" style="color:#16a085;">Settings</a>{% endif %}
+    &nbsp;·&nbsp;<a href="/logout" style="color:#e74c3c;">Sign out</a>
+</div>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <a class="logo-link" href="/"><img src="/static/peslogo.png" alt="PES"></a>
+        <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
+        <h2>Test Execution{% if test_attempt > 1 %}<span class="attempt-badge">Attempt {{ test_attempt }}</span>{% endif %}</h2>
+        <p>{{ save_name }}{% if portfolio_name %} &nbsp;·&nbsp; {{ portfolio_name }}{% endif %}</p>
+    </div>
+
+    <div class="sidebar-section">
+        <h3>Pipe Properties</h3>
+        {% if p.get('nps') %}<div class="param-row"><span class="param-label">NPS</span><span class="param-val">{{ p.nps }}"</span></div>{% endif %}
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Outside Diameter per API 5L">OD</span></span><span class="param-val">{{ "%.3f"|format(p.od|float) }}"</span></div>
+        {% if avg_wt %}<div class="param-row"><span class="param-label">Avg Wall Thickness</span><span class="param-val">{{ avg_wt }}"</span></div>{% endif %}
+        {% if total_length_ft %}<div class="param-row"><span class="param-label">Section Length</span><span class="param-val">{{ "{:,.0f}".format(total_length_ft) }} ft</span></div>{% endif %}
+    </div>
+
+    <div class="sidebar-section">
+        <h3>Test Parameters</h3>
+        {% if target_gauge %}
+        <div class="param-row"><span class="param-label">Target Gauge</span><span class="param-val">{{ target_gauge|int }} psig</span></div>
+        <div class="param-row"><span class="param-label"><span class="tt" data-tt="Acceptable test window at the test site gauge">Test Window</span></span><span class="param-val">{{ gauge_lower|int }}–{{ gauge_upper|int }} psig</span></div>
+        {% endif %}
+        {% if k_factor %}
+        <div class="param-row">
+            <span class="param-label"><span class="tt" data-tt="Pressure change per °F of pipe temperature change — positive means warming increases pressure. Derived from bulk modulus of water and pipe compliance.">K Factor</span></span>
+            <span class="param-val">{{ k_factor }} psi/°F</span>
+        </div>
+        {% endif %}
+        <label style="margin-top:12px;"><span class="tt" data-tt="Start date of the test — used to build the chart time axis and detect when the test crosses midnight into the next day">Test Date</span></label>
+        <input type="date" id="test-date" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;" oninput="updateAll(); scheduleAutoSave();">
+        <label style="margin-top:10px;">Timezone</label>
+        <select id="test-tz" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;" onchange="updateAll(); scheduleAutoSave();">
+            <optgroup label="— United States">
+                <option value="America/New_York">Eastern (ET)</option>
+                <option value="America/Chicago">Central (CT)</option>
+                <option value="America/Denver">Mountain (MT)</option>
+                <option value="America/Phoenix">Arizona — no DST (MST)</option>
+                <option value="America/Los_Angeles">Pacific (PT)</option>
+                <option value="America/Anchorage">Alaska (AKT)</option>
+                <option value="Pacific/Honolulu">Hawaii (HT)</option>
+            </optgroup>
+            <optgroup label="— Canada">
+                <option value="America/Halifax">Atlantic (AT)</option>
+                <option value="America/Toronto">Eastern Canada (ET)</option>
+                <option value="America/Winnipeg">Central Canada (CT)</option>
+                <option value="America/Regina">Saskatchewan — no DST (CST)</option>
+                <option value="America/Edmonton">Mountain Canada (MT)</option>
+                <option value="America/Vancouver">Pacific Canada (PT)</option>
+            </optgroup>
+            <optgroup label="— International">
+                <option value="UTC">UTC</option>
+                <option value="Europe/London">London (GMT/BST)</option>
+                <option value="Europe/Paris">Central European (CET)</option>
+                <option value="Asia/Dubai">Gulf (GST)</option>
+                <option value="Australia/Perth">Western Australia (AWST)</option>
+                <option value="Australia/Sydney">Eastern Australia (AEST)</option>
+            </optgroup>
+        </select>
+    </div>
+
+    <div class="sidebar-section">
+        <h3>MAOP Certification</h3>
+        <label>Install Date <span style="font-size:0.78em; color:#7f8c8d;">(determines applicable CFR provisions)</span></label>
+        <input type="date" id="cert-install-date" oninput="updateCert(); scheduleAutoSave();" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;">
+        <label id="cert-class-label" style="margin-top:10px;">Class Location</label>
+        <select id="cert-class" onchange="updateCert(); scheduleAutoSave();" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;">
+            <option value="">— Select to certify</option>
+            <option value="1">Class 1</option>
+            <option value="2">Class 2</option>
+            <option value="3">Class 3</option>
+            <option value="4">Class 4</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:6px; margin-top:8px; cursor:pointer; font-size:0.82em; color:#bdc3c7;">
+            <input type="checkbox" id="cert-converted" onchange="updateCert(); scheduleAutoSave();" style="width:auto; margin:0;">
+            Converted pipeline <span style="font-size:0.85em; color:#7f8c8d;">(§192.14 — ÷ 1.25 all classes)</span>
+        </label>
+        <div id="cert-result"></div>
+    </div>
+
+    <div class="sidebar-section">
+        <h3>Leak Detection</h3>
+        <label><span class="tt" data-tt="If actual pressure falls more than this below the temperature-corrected expected pressure, a leak is flagged">Alert Threshold (psi)</span></label>
+        <input type="number" id="leak-threshold" value="-10" step="1" max="0" oninput="updateAll(); scheduleAutoSave();">
+        <p class="hint">Negative — deviation below corrected pressure that triggers a warning.</p>
+    </div>
+
+    <div class="sidebar-section" id="pv-sidebar-section">
+        <h3>PV Plot</h3>
+        <div id="pv-summary">
+            {% if pv_data and pv_data.readings %}
+            <div class="param-row"><span class="param-label">Readings</span><span class="param-val">{{ pv_data.readings | length }}</span></div>
+            {% if pv_data.pump %}
+            <div class="param-row" style="font-size:0.8em; color:#95a5a6; padding-top:2px;">
+                {{ pv_data.pump.pistons }} piston{% if pv_data.pump.pistons != 1 %}s{% endif %},
+                {{ pv_data.pump.piston_diameter }}"&nbsp;dia &times; {{ pv_data.pump.stroke_length }}" stroke
+            </div>
+            {% endif %}
+            {% if pv_data.last_updated %}
+            <div style="font-size:0.75em; color:#7f8c8d; margin-top:4px;">Updated {{ pv_data.last_updated }}</div>
+            {% endif %}
+            {% else %}
+            <p class="hint" style="margin-top:0;">No PV data recorded yet.</p>
+            {% endif %}
+        </div>
+        {% if pv_data and pv_data.readings %}
+        <button class="btn btn-accent" onclick="openPVPlot()" style="margin-top:10px;">&#9656; Open PV Plot</button>
+        {% if not test_status %}
+        <button class="btn btn-danger" onclick="unlinkPV()" style="margin-top:6px; font-size:0.82em; padding:6px;">Unlink PV Plot</button>
+        {% endif %}
+        {% else %}
+        <button class="btn btn-accent" onclick="openPVModal()" style="margin-top:10px;">&#9656; Start PV Plot</button>
+        {% endif %}
+    </div>
+
+    <div class="sidebar-section" style="border-bottom:none; margin-top:auto;">
+        {% if test_status %}
+        <div class="finalized-badge {{ test_status }}">
+            {% if test_status == 'pass' %}&#10003; TEST PASSED{% else %}&#10007; TEST FAILED{% endif %}
+        </div>
+        {% if test_data.get('finalized_at') %}
+        <div style="text-align:center; font-size:0.75em; color:#95a5a6; margin-top:5px;">
+            Finalized {{ test_data.finalized_at[:10] }}
+        </div>
+        {% endif %}
+        <p class="hint" style="text-align:center; margin-top:8px;">This test record is locked and cannot be edited.</p>
+        {% if test_status == 'fail' %}
+        <button class="btn btn-accent" onclick="startRetest()" style="margin-top:4px;">Start Retest &#8594;</button>
+        {% endif %}
+        {% if user_is_admin %}
+        <button class="btn btn-danger" onclick="unlockTest()" style="margin-top:8px;">&#128275; Unlock Test</button>
+        {% endif %}
+        {% else %}
+        <button class="btn btn-accent" onclick="saveData(false)" style="margin-bottom:6px;">Save Now</button>
+        <div class="save-status" id="save-status"></div>
+        <div style="display:flex; gap:6px; margin-top:10px;">
+            <button class="btn btn-pass" onclick="finalizeTest('pass')" style="flex:1; font-weight:700;">&#10003; Pass</button>
+            <button class="btn btn-fail-btn" onclick="finalizeTest('fail')" style="flex:1; font-weight:700;">&#10007; Fail</button>
+        </div>
+        <button class="btn btn-danger" onclick="clearReadings()" style="margin-top:8px;">Clear All</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="main">
+
+    <!-- Status Banner -->
+    <div class="status-banner waiting" id="status-banner">
+        <div class="status-label" id="status-label">&#8212; Waiting for readings</div>
+        <div class="status-meta" id="status-meta"></div>
+    </div>
+
+    <!-- Combined Chart -->
+    <div class="chart-box">
+        <h3>Pressure &amp; Temperature vs. Time</h3>
+        <div id="pressure-chart" style="height:340px;"></div>
+    </div>
+
+    <!-- Readings Table -->
+    <div class="table-box">
+        <div class="table-header">
+            <h3>Readings</h3>
+            <span style="font-size:0.78em; color:#7f8c8d;">Auto-saved on every entry &nbsp;·&nbsp; Tab from Comment adds next row</span>
+        </div>
+        <div class="table-scroll">
+        <table id="readings-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th style="min-width:52px;">Date</th>
+                    <th>Time</th>
+                    <th><span class="tt tt-c" data-tt="Ambient air temperature at the test site — recorded for reference">Amb Temp (°F)</span></th>
+                    <th><span class="tt tt-c" data-tt="Pipe or test medium temperature at point of measurement — primary driver of pressure correction">Pipe Temp (°F)</span></th>
+                    <th><span class="tt tt-c" data-tt="Temperature of the soil or ground surrounding the pipe — tracked for thermal correlation; buried pipe temp equilibrates toward ground temp over time">Ground Temp (°F)</span></th>
+                    <th>Pressure (psig)</th>
+                    <th><span class="tt tt-c" data-tt="Expected pressure based on empirical linear regression of pipe temperature vs. pressure — ΔP = slope × ΔT_pipe from test start">Corrected P</span></th>
+                    <th><span class="tt tt-c" data-tt="Actual pressure minus temperature-corrected expected pressure — sustained negative values indicate a potential leak">Deviation</span></th>
+                    <th><span class="tt tt-c" data-tt="Change in standard gallons (60°F, 14.73 psia) from the previous reading. Computed via Halliburton volume balance (Eq. III–VIII): accounts for water compressibility, pipe hoop strain, and thermal expansion of both water and steel. Positive = volume lost in this interval.">ΔV (gal)</span></th>
+                    <th><span class="tt tt-c" data-tt="Cumulative unaccounted volume loss since test start. Intentional bleed volumes are subtracted. Positive = real leakage. Sign: green near zero, amber = small loss, red = significant loss.">Cum. Loss</span></th>
+                    <th>Event</th>
+                    <th><span class="tt tt-c" data-tt="For Pressure Bleed events: enter the volume of water intentionally released. Select gal or oz. This is subtracted from the cumulative unaccounted loss so only true leakage accumulates.">Released</span></th>
+                    <th style="min-width:140px; text-align:left; padding-left:8px;">Comment</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="readings-body"></tbody>
+        </table>
+        </div>
+        <button class="add-row-btn" onclick="addRow()">+ Add Reading</button>
+    </div>
+
+</div>
+
+<script>
+const K_FACTOR    = {{ k_factor if k_factor else 'null' }};
+const TARGET_P    = {{ target_gauge if target_gauge else 'null' }};
+const GAUGE_LOWER = {{ gauge_lower if gauge_lower else 'null' }};
+const GAUGE_UPPER = {{ gauge_upper if gauge_upper else 'null' }};
+const SAVE_ID     = "{{ save_id }}";
+const TEST_STATUS     = {{ (test_status | tojson) if test_status else 'null' }};
+const TEST_SITE_ELEV  = {{ test_site_elev if test_site_elev is not none else 'null' }};
+const HIGH_ELEV       = {{ high_elev if high_elev is not none else 'null' }};
+const LOW_ELEV        = {{ low_elev if low_elev is not none else 'null' }};
+const HEAD_FACTOR     = {{ p.get('head_factor', 0.433) | float }};
+const GOVERNING_CODE  = {{ governing_code | tojson }};
+const OD_INCHES       = {{ p.od | float }};
+const AVG_WT_INCHES   = {{ avg_wt if avg_wt else 'null' }};
+const TOTAL_LEN_FT    = {{ total_length_ft if total_length_ft else 'null' }};
+const UNRESTR_LEN_FT  = {{ (p.unrestrained_length | float) if p.get('unrestrained_length') else '0' }};
+// 49 CFR 192.619(a)(2)(ii) Table 1 — test pressure divisors by class and installation period
+// Period 1: installed before Nov 12, 1970
+// Period 2: Nov 12, 1970 through Jun 30, 2020
+// Period 3: Jul 1, 2020 and after
+// Converted (§192.14): ÷1.25 all classes
+var CLASS_FACTORS_192 = {
+    '1': [1.10, 1.10, 1.25],
+    '2': [1.25, 1.25, 1.25],
+    '3': [1.40, 1.50, 1.50],
+    '4': [1.40, 1.50, 1.50],
+};
+var CUTOFF_1 = '1970-11-12';   // Before this → Period 0 (index 0)
+var CUTOFF_2 = '2020-07-01';   // On/after this → Period 2 (index 2)
+
+function getPeriodIndex(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr < CUTOFF_1) return 0;
+    if (dateStr >= CUTOFF_2) return 2;
+    return 1;
+}
+
+// ── Volume Balance (Halliburton Section 900) ────────────────────────────────
+
+// Water density (lb/gal) vs temperature (°F) — linear interpolation of standard tables
+function waterDensityLbGal(T) {
+    var pts = [
+        [32,8.345],[40,8.345],[50,8.344],[60,8.337],
+        [70,8.327],[80,8.314],[90,8.299],[100,8.282],
+        [110,8.263],[120,8.242],[140,8.196],[160,8.146],
+        [180,8.091],[200,8.032]
+    ];
+    if (T <= pts[0][0]) return pts[0][1];
+    if (T >= pts[pts.length-1][0]) return pts[pts.length-1][1];
+    for (var i = 1; i < pts.length; i++) {
+        if (T <= pts[i][0]) {
+            var f = (T - pts[i-1][0]) / (pts[i][0] - pts[i-1][0]);
+            return pts[i-1][1] + f * (pts[i][1] - pts[i-1][1]);
+        }
+    }
+    return 8.337;
+}
+
+// Base pipe volume in standard gallons (60°F, 14.73 psia) — Halliburton Eq. I & II
+function getPipeVolumeGal() {
+    if (!AVG_WT_INCHES || !TOTAL_LEN_FT) return null;
+    var ID   = OD_INCHES - 2 * AVG_WT_INCHES;           // inside diameter, inches
+    var Vft  = Math.PI * Math.pow(ID / 2, 2) * 12 / 231; // gal/ft
+    return Vft * TOTAL_LEN_FT;
+}
+
+// Compute V_tp correction factor at a given pressure (psig) and pipe temperature (°F).
+// Returns F = F_wp × F_pp × F_pwt per Halliburton Equations IV–VIII.
+function calcVolumeFactor(P_psig, T_F) {
+    if (!AVG_WT_INCHES || !TOTAL_LEN_FT) return null;
+    var ID      = OD_INCHES - 2 * AVG_WT_INCHES;
+    var Dt      = ID / AVG_WT_INCHES;          // D/t using inside diameter
+    var L_total = TOTAL_LEN_FT;
+    var L_unr   = Math.min(UNRESTR_LEN_FT, L_total);
+    var L_res   = L_total - L_unr;
+
+    // Eq. IV: water compressibility
+    var F_wp = 1 / (1 - 4.5e-5 * (P_psig / 14.73));
+
+    // Eq. V: pipe pressure expansion (hoop strain)
+    var F_pp_unr = 1 + Dt * P_psig / 24e6;
+    var F_pp_res = 1 + Dt * 0.91 * P_psig / 30e6 + 3.6e-6 * (T_F - 60);
+    var F_pp = L_total > 0 ? (F_pp_unr * L_unr + F_pp_res * L_res) / L_total : F_pp_unr;
+
+    // Eq. VII: pipe thermal expansion (Em: unrestrained 18.2e-6, restrained 12.1e-6)
+    var F_pt_unr = 1 + (T_F - 60) * 18.2e-6;
+    var F_pt_res = 1 + (T_F - 60) * 12.1e-6;
+    var F_pt = L_total > 0 ? (F_pt_unr * L_unr + F_pt_res * L_res) / L_total : F_pt_unr;
+
+    // Eq. VIII: water specific volume ratio relative to 60°F
+    var F_wt = 8.337 / waterDensityLbGal(T_F);
+
+    // Eq. VI: combined thermal factor
+    var F_pwt = F_pt / F_wt;
+
+    return F_wp * F_pp * F_pwt;
+}
+
+// Volume balance: returns [{V_tp, delta_v, cum_loss}] for each row.
+// delta_v  — volume change from previous reading (positive = loss).
+// cum_loss — cumulative unaccounted loss since refIdx (bleed volumes subtracted).
+function calcVolumeBalance(rows, refIdx) {
+    var empty = rows.map(function() { return { V_tp: null, delta_v: null, cum_loss: null }; });
+    var V_o   = getPipeVolumeGal();
+    if (!V_o || refIdx < 0) return empty;
+
+    var result  = rows.map(function() { return { V_tp: null, delta_v: null, cum_loss: null }; });
+    var prevVtp = null;
+    var cumLoss = 0;
+
+    for (var i = refIdx; i < rows.length; i++) {
+        var r = rows[i];
+        if (isNaN(r.pressure) || isNaN(r.pipe_temp) || r.pressure <= 0) { prevVtp = null; continue; }
+        var F = calcVolumeFactor(r.pressure, r.pipe_temp);
+        if (F === null) continue;
+        var vtp = V_o * F;
+        result[i].V_tp = vtp;
+
+        if (prevVtp !== null) {
+            var delta    = prevVtp - vtp;                           // positive = volume lost
+            var released = parseFloat(r.vol_released) || 0;        // intentional bleed volume
+            if (r.vol_released_unit === 'oz') released = released / 128;  // convert fl oz → gal
+            result[i].delta_v = delta;
+            cumLoss += (delta - released);                          // only unaccounted loss accumulates
+            result[i].cum_loss = cumLoss;
+        } else {
+            result[i].delta_v  = 0;
+            result[i].cum_loss = 0;
+        }
+        prevVtp = vtp;
+    }
+    return result;
+}
+
+// Halliburton Eq.: equivalent hydraulic leak hole diameter (inches).
+// D_e = 0.0236 × Q^0.5 / P^0.25   (Q in gal/hr, P in psig)
+function leakEquivDiameter(Q_gph, P_psig) {
+    if (Q_gph <= 0 || P_psig <= 0) return null;
+    return 0.0236 * Math.pow(Q_gph, 0.5) / Math.pow(P_psig, 0.25);
+}
+
+// Test duration in hours from refIdx row to last row with a valid time entry.
+function getTestDurationHours(rows, refIdx) {
+    if (refIdx < 0) return null;
+    var offs     = computeDayOffsets(rows);
+    var startMin = timeToMin(rows[refIdx].time);
+    if (startMin === null) return null;
+    var startTotal = offs[refIdx] * 1440 + startMin;
+    for (var i = rows.length - 1; i > refIdx; i--) {
+        var em = timeToMin(rows[i].time);
+        if (em !== null) {
+            var endTotal = offs[i] * 1440 + em;
+            if (endTotal > startTotal) return (endTotal - startTotal) / 60;
+        }
+    }
+    return null;
+}
+
+const savedReadings    = {{ (test_data.readings | tojson) if test_data and test_data.readings else '[]' }};
+const savedTestDate    = {{ (test_data.test_date | tojson) if test_data and test_data.test_date else 'null' }};
+const savedTimezone    = {{ (test_data.timezone  | tojson) if test_data and test_data.timezone  else 'null' }};
+const savedInstallDate = {{ (test_data.install_date | tojson) if test_data and test_data.install_date else 'null' }};
+const savedConverted   = {{ (test_data.converted | tojson) if test_data and test_data.converted else 'false' }};
+const savedCertClass   = {{ (test_data.cert_class | tojson) if test_data and test_data.cert_class else 'null' }};
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+
+function getTimezone() { return document.getElementById('test-tz').value; }
+
+// Short label shown on the chart axis, e.g. "ET" from "America/New_York"
+function getTzLabel() {
+    var opt = document.getElementById('test-tz').selectedOptions[0];
+    if (!opt) return '';
+    // Extract the abbreviation in parentheses, e.g. "Eastern (ET)" → "ET"
+    var m = opt.text.match(/\(([^)]+)\)$/);
+    return m ? m[1] : opt.text;
+}
+
+// Open native time picker on the inp-time input (button is a sibling)
+function openTimePicker(btn) {
+    var timeEl = btn.parentElement.querySelector('.inp-time');
+    if (timeEl && timeEl.showPicker) timeEl.showPicker();
+}
+
+// Convert "HH:MM" time string to total minutes (null if unparseable)
+function timeToMin(t) {
+    if (!t) return null;
+    var parts = t.split(':');
+    if (parts.length < 2) return null;
+    var h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+}
+
+// Compute how many days each row is offset from the first (detects midnight crossover)
+function computeDayOffsets(rows) {
+    var offsets = [], dayOff = 0;
+    for (var i = 0; i < rows.length; i++) {
+        if (i > 0) {
+            var prev = timeToMin(rows[i - 1].time);
+            var curr = timeToMin(rows[i].time);
+            if (prev !== null && curr !== null && curr < prev) dayOff++;
+        }
+        offsets.push(dayOff);
+    }
+    return offsets;
+}
+
+function updateDayBadges(rows) {
+    var offsets  = computeDayOffsets(rows);
+    var testDate = document.getElementById('test-date').value;
+    document.querySelectorAll('#readings-body tr').forEach(function(tr, i) {
+        var cell = tr.querySelector('.cell-date');
+        if (!cell) return;
+        if (testDate) {
+            var d = new Date(testDate + 'T00:00:00');
+            d.setDate(d.getDate() + offsets[i]);
+            cell.textContent = (d.getMonth() + 1) + '/' + d.getDate();
+        } else {
+            cell.textContent = offsets[i] > 0 ? '+' + offsets[i] + 'd' : '';
+        }
+    });
+}
+
+function getThreshold() {
+    return parseFloat(document.getElementById('leak-threshold').value) || -10;
+}
+
+function getRows() {
+    var rows = [];
+    document.querySelectorAll('#readings-body tr').forEach(function(tr) {
+        var released = parseFloat(tr.querySelector('.inp-released').value);
+        rows.push({
+            event:              tr.querySelector('.inp-event').value,
+            time:               tr.querySelector('.inp-time').value,
+            pipe_temp:          parseFloat(tr.querySelector('.inp-pipe').value),
+            ground_temp:        parseFloat(tr.querySelector('.inp-ground').value),
+            amb_temp:           parseFloat(tr.querySelector('.inp-amb').value),
+            pressure:           parseFloat(tr.querySelector('.inp-p').value),
+            vol_released:       isNaN(released) ? null : released,
+            vol_released_unit:  tr.querySelector('.inp-released-unit').value,
+            comment:            tr.querySelector('.inp-comment').value,
+        });
+    });
+    return rows;
+}
+
+// ── Core calculation ───────────────────────────────────────────────────────
+
+// Find the reference row index: prefer the Test Start event row, fall back to first valid row
+function findRefIdx(rows) {
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].event === 'test_start' && !isNaN(rows[i].pipe_temp) && !isNaN(rows[i].pressure)) return i;
+    }
+    for (var i = 0; i < rows.length; i++) {
+        if (!isNaN(rows[i].pipe_temp) && !isNaN(rows[i].pressure)) return i;
+    }
+    return -1;
+}
+
+function calcCorrected(rows, refIdx) {
+    // Returns { calcs: [{corrected, dev}], slope }
+    // slope is the empirical psi/°F from least-squares regression of pipe_temp vs pressure.
+    var empty = { calcs: rows.map(function() { return { corrected: null, dev: null }; }), slope: null };
+    if (refIdx < 0) return empty;
+    var ref = rows[refIdx];
+
+    // Gather post-reference data points with valid pipe_temp and pressure
+    var pts = [];
+    for (var i = refIdx; i < rows.length; i++) {
+        var r = rows[i];
+        if (!isNaN(r.pipe_temp) && !isNaN(r.pressure) && r.pressure > 0) {
+            pts.push({ t: r.pipe_temp, p: r.pressure });
+        }
+    }
+
+    // Least-squares linear regression: p = slope * t + intercept
+    var slope = null;
+    if (pts.length >= 2) {
+        var n = pts.length, sumT = 0, sumP = 0, sumTP = 0, sumTT = 0;
+        for (var j = 0; j < n; j++) { sumT += pts[j].t; sumP += pts[j].p; sumTP += pts[j].t * pts[j].p; sumTT += pts[j].t * pts[j].t; }
+        var denom = n * sumTT - sumT * sumT;
+        if (Math.abs(denom) > 1e-10) slope = (n * sumTP - sumT * sumP) / denom;
+    }
+
+    // Fall back to analytical K_FACTOR if not enough data for regression
+    var effectiveSlope = slope !== null ? slope : K_FACTOR;
+
+    var calcs = rows.map(function(r, i) {
+        if (isNaN(r.pipe_temp) || isNaN(r.pressure)) return { corrected: null, dev: null };
+        var corrected = effectiveSlope !== null
+            ? ref.pressure + effectiveSlope * (r.pipe_temp - ref.pipe_temp)
+            : null;
+        var dev = (corrected !== null && i > refIdx) ? r.pressure - corrected : null;
+        return { corrected: corrected, dev: dev };
+    });
+    return { calcs: calcs, slope: slope };
+}
+
+// ── Status ─────────────────────────────────────────────────────────────────
+
+function updateStatus(rows, calcs, empiricalK, volBalance) {
+    var banner = document.getElementById('status-banner');
+    var label  = document.getElementById('status-label');
+    var meta   = document.getElementById('status-meta');
+    banner.className = 'status-banner';
+
+    var validCalcs = calcs.filter(function(c, i) { return c.dev !== null && i > 0; });
+    if (!validCalcs.length) {
+        banner.classList.add('waiting');
+        label.innerHTML = '&#8212; Waiting for readings';
+        meta.innerHTML = '';
+        return;
+    }
+
+    var thr     = getThreshold();
+    var lastDev = validCalcs[validCalcs.length - 1].dev;
+
+    var state, icon, text;
+    if (lastDev < thr) {
+        state = 'leak';    icon = '&#9888;'; text = 'LEAK SUSPECTED';
+    } else if (lastDev < thr / 2) {
+        state = 'monitor'; icon = '&#128308;'; text = 'MONITOR CLOSELY';
+    } else {
+        state = 'stable';  icon = '&#9989;'; text = 'STABLE';
+    }
+
+    banner.classList.add(state);
+    label.innerHTML = icon + ' ' + text;
+
+    var lastRow  = rows[rows.length - 1];
+    var lastCalc = calcs[calcs.length - 1];
+    var metaHtml = '';
+    if (!isNaN(lastRow.pressure))    metaHtml += '<span>Current Pressure<strong>' + lastRow.pressure.toFixed(0) + ' psig</strong></span>';
+    if (lastCalc.corrected !== null) metaHtml += '<span>Corrected Expected<strong>' + lastCalc.corrected.toFixed(0) + ' psig</strong></span>';
+    if (lastCalc.dev !== null)       metaHtml += '<span>Deviation<strong>' + (lastCalc.dev >= 0 ? '+' : '') + lastCalc.dev.toFixed(1) + ' psi</strong></span>';
+    if (!isNaN(lastRow.pipe_temp))   metaHtml += '<span>Pipe Temp<strong>' + lastRow.pipe_temp.toFixed(1) + ' °F</strong></span>';
+    if (!isNaN(lastRow.ground_temp)) metaHtml += '<span>Ground Temp<strong>' + lastRow.ground_temp.toFixed(1) + ' °F</strong></span>';
+    if (empiricalK !== null)         metaHtml += '<span>Empirical K<strong>' + (empiricalK >= 0 ? '+' : '') + empiricalK.toFixed(2) + ' psi/°F</strong></span>';
+
+    // Volume balance summary
+    if (volBalance) {
+        var lastVB = null;
+        for (var vi = rows.length - 1; vi >= 0; vi--) {
+            if (volBalance[vi] && volBalance[vi].cum_loss !== null) { lastVB = volBalance[vi]; break; }
+        }
+        if (lastVB !== null) {
+            var cumLoss = lastVB.cum_loss;
+            metaHtml += '<span>Unaccounted Loss<strong>' + cumLoss.toFixed(0) + ' gal</strong></span>';
+            var refIdx = findRefIdx(rows);
+            var dur    = getTestDurationHours(rows, refIdx);
+            if (dur && dur > 0 && cumLoss > 0) {
+                var Q_gph = cumLoss / dur;
+                var sumP  = 0, cntP = 0;
+                for (var pi = 0; pi < rows.length; pi++) {
+                    if (!isNaN(rows[pi].pressure) && rows[pi].pressure > 0) { sumP += rows[pi].pressure; cntP++; }
+                }
+                if (cntP > 0) {
+                    var De = leakEquivDiameter(Q_gph, sumP / cntP);
+                    if (De !== null) {
+                        var deStr = De < 0.001 ? De.toExponential(2) : De.toFixed(4);
+                        metaHtml += '<span>Equiv. Hole Dia.<strong>' + deStr + '"</strong></span>';
+                    }
+                }
+            }
+        }
+    }
+
+    meta.innerHTML = metaHtml;
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────
+
+var chartLayout = {
+    paper_bgcolor: '#16213e', plot_bgcolor: '#16213e',
+    font: { color: '#ecf0f1', size: 11 },
+    margin: { l: 60, r: 20, t: 10, b: 50 },
+    legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 11 } },
+    hovermode: 'x unified',
+};
+
+function timeAxisLayout() {
+    var lbl = getTzLabel();
+    return { color: '#95a5a6', gridcolor: 'rgba(255,255,255,0.1)',
+             title: { text: lbl ? 'Time (' + lbl + ')' : 'Time', font: { size: 10 } } };
+}
+
+// Add N days to a "YYYY-MM-DD" string using pure UTC arithmetic (no local-TZ contamination)
+function addDaysToDateStr(dateStr, days) {
+    var d = new Date(Date.UTC(
+        parseInt(dateStr.slice(0, 4), 10),
+        parseInt(dateStr.slice(5, 7), 10) - 1,
+        parseInt(dateStr.slice(8, 10), 10) + days
+    ));
+    return d.getUTCFullYear() + '-' +
+           String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getUTCDate()).padStart(2, '0');
+}
+
+function buildTimeAxis(rows) {
+    var testDate = document.getElementById('test-date').value; // "YYYY-MM-DD"
+    var tz       = getTimezone();
+    var offsets  = computeDayOffsets(rows);
+    return rows.map(function(r, i) {
+        if (!r.time) return null;
+        if (testDate) {
+            // Compute wall date using pure UTC math so browser local-TZ never affects the date
+            var wallDate    = addDaysToDateStr(testDate, offsets[i]);
+            var adjustedStr = wallDate + 'T' + r.time + ':00';
+            // Use Intl to find the UTC offset at that wall time in the selected timezone
+            try {
+                var ref   = new Date(adjustedStr + 'Z'); // treat as UTC temporarily
+                var parts = new Intl.DateTimeFormat('en-US', {
+                    timeZone: tz, hour12: false,
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                }).formatToParts(ref);
+                var p = {};
+                parts.forEach(function(x) { p[x.type] = x.value; });
+                var tzWall = new Date(p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute + ':00Z');
+                var offsetMs = ref - tzWall; // difference = TZ offset
+                return new Date(ref.getTime() + offsetMs).toISOString();
+            } catch(e) {
+                return adjustedStr;
+            }
+        }
+        return r.time;
+    });
+}
+
+function updateCharts(rows, calcs) {
+    var times = buildTimeAxis(rows);
+
+    var actualP = rows.map(function(r) { return isNaN(r.pressure)   ? null : r.pressure; });
+    var corrP   = calcs.map(function(c) { return c.corrected !== null ? parseFloat(c.corrected.toFixed(1)) : null; });
+    var pipeT   = rows.map(function(r) { return isNaN(r.pipe_temp)   ? null : r.pipe_temp; });
+    var groundT = rows.map(function(r) { return isNaN(r.ground_temp) ? null : r.ground_temp; });
+    var ambT    = rows.map(function(r) { return isNaN(r.amb_temp)    ? null : r.amb_temp; });
+
+    var traces = [
+        // Pressure traces — left y-axis
+        { x: times, y: actualP, name: 'Actual Pressure', type: 'scatter', mode: 'lines+markers',
+          yaxis: 'y', line: { color: '#3498db', width: 2 }, marker: { size: 5 },
+          hovertemplate: '%{y:.0f} psig<extra>Actual</extra>' },
+        { x: times, y: corrP, name: 'Temp-Corrected', type: 'scatter', mode: 'lines',
+          yaxis: 'y', line: { color: '#f39c12', width: 2, dash: 'dash' },
+          hovertemplate: '%{y:.0f} psig<extra>Corrected</extra>' },
+        // Temperature traces — right y-axis
+        { x: times, y: pipeT,   name: 'Pipe Temp', type: 'scatter', mode: 'lines+markers',
+          yaxis: 'y2', line: { color: '#e74c3c', width: 2 }, marker: { size: 5 },
+          hovertemplate: '%{y:.1f} °F<extra>Pipe Temp</extra>' },
+        { x: times, y: groundT, name: 'Ground Temp', type: 'scatter', mode: 'lines+markers',
+          yaxis: 'y2', line: { color: '#c0a050', width: 2, dash: 'dashdot' }, marker: { size: 4, symbol: 'diamond' },
+          hovertemplate: '%{y:.1f} °F<extra>Ground Temp</extra>' },
+        { x: times, y: ambT,    name: 'Ambient Temp', type: 'scatter', mode: 'lines',
+          yaxis: 'y2', line: { color: '#7f8c8d', width: 1.5, dash: 'dot' },
+          hovertemplate: '%{y:.1f} °F<extra>Ambient Temp</extra>' },
+    ];
+
+    var shapes = [];
+    if (GAUGE_LOWER !== null) shapes.push({ type:'line', xref:'paper', yref:'y', x0:0, x1:1, y0:GAUGE_LOWER, y1:GAUGE_LOWER, line:{ color:'rgba(39,174,96,0.5)', width:1.5, dash:'dot' } });
+    if (GAUGE_UPPER !== null) shapes.push({ type:'line', xref:'paper', yref:'y', x0:0, x1:1, y0:GAUGE_UPPER, y1:GAUGE_UPPER, line:{ color:'rgba(231,76,60,0.5)', width:1.5, dash:'dot' } });
+    if (TARGET_P    !== null) shapes.push({ type:'line', xref:'paper', yref:'y', x0:0, x1:1, y0:TARGET_P,    y1:TARGET_P,    line:{ color:'rgba(52,152,219,0.35)', width:1, dash:'dot' } });
+
+    Plotly.react('pressure-chart', traces, Object.assign({}, chartLayout, {
+        xaxis:  timeAxisLayout(),
+        yaxis:  { color: '#95a5a6', gridcolor: 'rgba(255,255,255,0.1)',
+                  title: { text: 'Pressure (psig)', font: { size: 10 } } },
+        yaxis2: { color: '#e74c3c', gridcolor: 'rgba(0,0,0,0)',
+                  title: { text: 'Temperature (°F)', font: { size: 10 } },
+                  overlaying: 'y', side: 'right', showgrid: false },
+        shapes: shapes,
+        margin: { l: 60, r: 60, t: 10, b: 50 },
+    }), { responsive: true, displayModeBar: false });
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────
+
+function updateTableCalcs(rows, calcs, refIdx, volBalance) {
+    var thr   = getThreshold();
+    var V_o   = getPipeVolumeGal();
+    var trs   = document.querySelectorAll('#readings-body tr');
+    trs.forEach(function(tr, i) {
+        var evVal = tr.querySelector('.inp-event').value;
+        tr.className = '';
+        if (i === refIdx)               tr.classList.add('ref-row');
+        if (evVal === 'test_start')     tr.classList.add('ev-test-start');
+        if (evVal === 'leak_check')     tr.classList.add('ev-leak-check');
+        if (evVal === 'test_end')       tr.classList.add('ev-test-end');
+        if (evVal === 'pressure_bleed') tr.classList.add('ev-bleed');
+        if (evVal === 'pv_start')       tr.classList.add('ev-pv-start');
+        if (evVal === 'pv_end')         tr.classList.add('ev-pv-end');
+
+        var c        = calcs[i];
+        var corrCell = tr.querySelector('.cell-corr');
+        var devCell  = tr.querySelector('.cell-dev');
+        var dvCell   = tr.querySelector('.cell-dv');
+        var cumCell  = tr.querySelector('.cell-cum');
+
+        // Corrected P and Deviation columns
+        if (i === refIdx) {
+            corrCell.textContent = '—';
+            devCell.textContent  = '—';
+            devCell.className    = 'cell-dev computed';
+        } else if (c && c.corrected !== null) {
+            corrCell.textContent = c.corrected.toFixed(0);
+            if (c.dev !== null) {
+                var d = c.dev;
+                devCell.textContent = (d >= 0 ? '+' : '') + d.toFixed(1);
+                devCell.className   = 'cell-dev ' + (d < thr ? 'dev-leak' : d < thr / 2 ? 'dev-warn' : 'dev-ok');
+            } else {
+                devCell.textContent = '';
+                devCell.className   = 'cell-dev computed';
+            }
+        } else {
+            corrCell.textContent = '';
+            devCell.textContent  = '';
+            devCell.className    = 'cell-dev computed';
+        }
+
+        // Volume balance columns
+        var vb = volBalance ? volBalance[i] : null;
+        if (vb && vb.delta_v !== null) {
+            dvCell.textContent = (vb.delta_v >= 0 ? '+' : '') + vb.delta_v.toFixed(0);
+        } else {
+            dvCell.textContent = '';
+        }
+
+        if (vb && vb.cum_loss !== null) {
+            var cl = vb.cum_loss;
+            cumCell.textContent = cl.toFixed(0);
+            cumCell.className = 'cell-cum computed';
+            if (cl <= 0) {
+                cumCell.classList.add('loss-ok');
+            } else if (V_o && cl > V_o * 0.0005) {
+                cumCell.classList.add('loss-bad');
+            } else {
+                cumCell.classList.add('loss-mid');
+            }
+        } else {
+            cumCell.textContent = '';
+            cumCell.className   = 'cell-cum computed';
+        }
+    });
+}
+
+function updateAll() {
+    var rows       = getRows();
+    var refIdx     = findRefIdx(rows);
+    var result     = calcCorrected(rows, refIdx);
+    var calcs      = result.calcs;
+    var empiricalK = result.slope;
+    var volBalance = calcVolumeBalance(rows, refIdx);
+    updateTableCalcs(rows, calcs, refIdx, volBalance);
+    updateDayBadges(rows);
+    if (TEST_STATUS) {
+        var banner = document.getElementById('status-banner');
+        var label  = document.getElementById('status-label');
+        banner.className = 'status-banner ' + (TEST_STATUS === 'pass' ? 'stable' : 'leak');
+        label.innerHTML  = TEST_STATUS === 'pass'
+            ? '&#10003; TEST PASSED — Record Finalized'
+            : '&#10007; TEST FAILED — Record Finalized';
+        document.getElementById('status-meta').innerHTML = '';
+    } else {
+        updateStatus(rows, calcs, empiricalK, volBalance);
+    }
+    updateCharts(rows, calcs);
+    updateCert();
+}
+
+// ── MAOP Certification ─────────────────────────────────────────────────────
+
+function updateCert() {
+    var el          = document.getElementById('cert-result');
+    var installDate = document.getElementById('cert-install-date').value || null;
+    var clsEl       = document.getElementById('cert-class');
+    var classLblEl  = document.getElementById('cert-class-label');
+    var converted   = document.getElementById('cert-converted').checked;
+
+    // Determine regulatory regime from governing code
+    var is195 = GOVERNING_CODE && GOVERNING_CODE.indexOf('195') !== -1;
+
+    // Show/hide class dropdown based on regime and converted flag
+    var hideClass = is195 || converted;
+    clsEl.style.display       = hideClass ? 'none' : '';
+    classLblEl.style.display  = hideClass ? 'none' : '';
+
+    // Determine factor and applicable CFR note
+    var factor, cfrNote;
+    if (is195) {
+        factor  = 1.25;
+        cfrNote = 'Per 49 CFR 195.304 — ÷ 1.25 for all class locations.';
+    } else if (converted) {
+        factor  = 1.25;
+        cfrNote = 'Converted pipeline per 49 CFR 192.14 — ÷ 1.25 for all class locations.';
+    } else {
+        var cls = clsEl.value;
+        if (!cls) { el.innerHTML = ''; return; }
+
+        var periodIdx = getPeriodIndex(installDate);
+        if (periodIdx === null) {
+            // No date entered — show all three factors for reference
+            var f = CLASS_FACTORS_192[cls];
+            el.innerHTML = '<p class="hint" style="margin-top:8px;">Enter install date to determine applicable factor. Class ' + cls + ' factors: ÷' + f[0].toFixed(2) + ' (pre-Nov 1970) · ÷' + f[1].toFixed(2) + ' (1970–2020) · ÷' + f[2].toFixed(2) + ' (Jul 2020+)</p>';
+            return;
+        }
+
+        factor = CLASS_FACTORS_192[cls][periodIdx];
+        var periodLabels = [
+            'pre-Nov 12, 1970 (Period 0)',
+            'Nov 12, 1970 – Jun 30, 2020 (Period 1)',
+            'Jul 1, 2020 and after (Period 2)',
+        ];
+        cfrNote = 'Per 49 CFR 192.619(a)(2)(ii), ' + periodLabels[periodIdx] + ' — Class ' + cls + ' ÷ ' + factor.toFixed(2) + '.';
+    }
+
+    // Minimum actual gauge pressure from Test Start through end
+    var rows   = getRows();
+    var refIdx = findRefIdx(rows);
+    if (refIdx < 0) {
+        el.innerHTML = '<p class="hint" style="margin-top:8px;">No test readings with valid pressure.</p>';
+        return;
+    }
+    var pressures = [];
+    for (var i = refIdx; i < rows.length; i++) {
+        if (!isNaN(rows[i].pressure) && rows[i].pressure > 0) pressures.push(rows[i].pressure);
+    }
+    if (!pressures.length) {
+        el.innerHTML = '<p class="hint" style="margin-top:8px;">No pressure readings after Test Start.</p>';
+        return;
+    }
+    var minP = Math.min.apply(null, pressures);
+
+    // MAOP_at_point = (minP_at_gauge ± elevation_head) / factor
+    var maopGauge = minP / factor;
+    var maopHigh = (HIGH_ELEV !== null && TEST_SITE_ELEV !== null)
+        ? (minP - (HIGH_ELEV - TEST_SITE_ELEV) * HEAD_FACTOR) / factor : null;
+    var maopLow  = (LOW_ELEV !== null && TEST_SITE_ELEV !== null)
+        ? (minP + (TEST_SITE_ELEV - LOW_ELEV) * HEAD_FACTOR) / factor : null;
+
+    var certMAOP = maopHigh !== null ? maopHigh : maopGauge;
+
+    var html = '<div style="margin-top:10px; border-top:1px solid #455a64; padding-top:10px;">';
+    html += '<div class="param-row"><span class="param-label">Min Test Pressure</span><span class="param-val">' + minP.toFixed(0) + ' psig</span></div>';
+    html += '<div class="param-row"><span class="param-label">Class Factor</span><span class="param-val">&divide; ' + factor.toFixed(2) + '</span></div>';
+
+    html += '<div class="param-row" style="margin-top:6px; padding-top:6px; border-top:1px solid #455a64;">';
+    html += '<span class="param-label" style="color:#ecf0f1; font-weight:600;">Certified MAOP';
+    if (HIGH_ELEV !== null) html += ' <span style="font-weight:400; font-size:0.85em; color:#95a5a6;">(at ' + HIGH_ELEV.toFixed(0) + ' ft)</span>';
+    html += '</span>';
+    var certColor = certMAOP < 0 ? '#e74c3c' : '#16a085';
+    html += '<span class="param-val" style="color:' + certColor + '; font-size:1.1em;">' + certMAOP.toFixed(0) + ' psig</span></div>';
+
+    if (TEST_SITE_ELEV !== null) {
+        html += '<div class="param-row"><span class="param-label" style="color:#95a5a6;">At Gauge (' + TEST_SITE_ELEV.toFixed(0) + ' ft)</span>';
+        html += '<span class="param-val" style="color:#bdc3c7;">' + maopGauge.toFixed(0) + ' psig</span></div>';
+    }
+    if (maopLow !== null && LOW_ELEV !== null) {
+        html += '<div class="param-row"><span class="param-label" style="color:#95a5a6;">At Low Point (' + LOW_ELEV.toFixed(0) + ' ft)</span>';
+        html += '<span class="param-val" style="color:#bdc3c7;">' + maopLow.toFixed(0) + ' psig</span></div>';
+    }
+    html += '<p class="hint" style="margin-top:6px;">' + cfrNote + '</p>';
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+// ── Row management ─────────────────────────────────────────────────────────
+
+function makeRow(data) {
+    data = data || {};
+    var tr = document.createElement('tr');
+
+    function esc(v) { return String(v === undefined || v === null ? '' : v).replace(/"/g, '&quot;'); }
+
+    var evOpts   = ['', 'test_start', 'leak_check', 'pressure_bleed', 'pv_start', 'pv_end', 'test_end'];
+    var evLabels = { '': '—', 'test_start': 'Test Start', 'leak_check': 'Leak Check', 'pressure_bleed': 'Pressure Bleed', 'pv_start': 'Start PV Plot', 'pv_end': 'End PV Plot', 'test_end': 'Test End' };
+    var selEv = data.event || '';
+    var optHtml = evOpts.map(function(v) {
+        return '<option value="' + v + '"' + (selEv === v ? ' selected' : '') + '>' + evLabels[v] + '</option>';
+    }).join('');
+
+    tr.innerHTML =
+        '<td class="row-num"></td>' +
+        '<td class="cell-date" style="min-width:52px; font-size:0.8em; color:#95a5a6; font-family:monospace; white-space:nowrap;"></td>' +
+        '<td style="min-width:110px;"><div class="time-wrap">' +
+            '<input class="inp-time" type="time" value="' + esc(data.time) + '" oninput="updateAll(); scheduleAutoSave();">' +
+            '<button type="button" class="time-pick-btn" tabindex="-1" title="Pick time" onclick="openTimePicker(this)">&#128336;</button>' +
+        '</div></td>' +
+        '<td style="min-width:72px;"><input class="inp-amb"    type="number" step="0.1" placeholder="°F"   value="' + esc(data.amb_temp)    + '" oninput="updateAll(); scheduleAutoSave();"></td>' +
+        '<td style="min-width:72px;"><input class="inp-pipe"   type="number" step="0.1" placeholder="°F"   value="' + esc(data.pipe_temp)   + '" oninput="updateAll(); scheduleAutoSave();"></td>' +
+        '<td style="min-width:78px;"><input class="inp-ground" type="number" step="0.1" placeholder="°F"   value="' + esc(data.ground_temp) + '" oninput="updateAll(); scheduleAutoSave();"></td>' +
+        '<td style="min-width:80px;"><input class="inp-p"      type="number" step="1"   placeholder="psig" value="' + esc(data.pressure)    + '" oninput="updateAll(); scheduleAutoSave();"></td>' +
+        '<td class="computed cell-corr" style="min-width:72px;"></td>' +
+        '<td class="computed cell-dev"  style="min-width:70px;"></td>' +
+        '<td class="cell-dv  computed"  style="min-width:70px;"></td>' +
+        '<td class="cell-cum computed"  style="min-width:76px;"></td>' +
+        '<td style="min-width:110px;"><select class="inp-event" onchange="updateAll(); scheduleAutoSave();">' + optHtml + '</select></td>' +
+        '<td style="min-width:96px;"><div class="released-wrap">' +
+            '<input class="inp-released" type="number" step="0.1" min="0" placeholder="—" value="' + esc(data.vol_released || '') + '" oninput="updateAll(); scheduleAutoSave();">' +
+            '<select class="inp-released-unit" onchange="updateAll(); scheduleAutoSave();">' +
+                '<option value="gal"' + ((!data.vol_released_unit || data.vol_released_unit === 'gal') ? ' selected' : '') + '>gal</option>' +
+                '<option value="oz"'  + (data.vol_released_unit === 'oz'  ? ' selected' : '') + '>oz</option>' +
+            '</select>' +
+        '</div></td>' +
+        '<td style="min-width:150px;"><input class="inp-comment" type="text" placeholder="Notes..." value="' + esc(data.comment) + '" oninput="scheduleAutoSave();"></td>' +
+        '<td class="del-cell"><button onclick="removeRow(this)" title="Remove">&#215;</button></td>';
+
+    // Tab from comment field on last row → add new row
+    tr.querySelector('.inp-comment').addEventListener('keydown', function(e) {
+        if (e.key === 'Tab' && !e.shiftKey) {
+            var allRows = document.querySelectorAll('#readings-body tr');
+            if (tr === allRows[allRows.length - 1]) { e.preventDefault(); addRow(); }
+        }
+    });
+    return tr;
+}
+
+function renumberRows() {
+    document.querySelectorAll('#readings-body tr').forEach(function(tr, i) {
+        tr.querySelector('.row-num').textContent = i + 1;
+    });
+}
+
+function addRow(data, suppressFocus) {
+    var tbody = document.getElementById('readings-body');
+    var tr = makeRow(data);
+    tbody.appendChild(tr);
+    renumberRows();
+    updateAll();
+    if (!data && !suppressFocus) setTimeout(function() { tr.querySelector('.inp-time').focus(); }, 0);
+}
+
+function insertRowChronologically(data) {
+    var tbody = document.getElementById('readings-body');
+    var tr = makeRow(data);
+    var newTime = (data && data.time) || '';
+    var inserted = false;
+    if (newTime) {
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        for (var i = 0; i < rows.length; i++) {
+            var rowTime = rows[i].querySelector('.inp-time').value;
+            if (rowTime && rowTime > newTime) {
+                tbody.insertBefore(tr, rows[i]);
+                inserted = true;
+                break;
+            }
+        }
+    }
+    if (!inserted) tbody.appendChild(tr);
+    renumberRows();
+    updateAll();
+}
+
+function removeRow(btn) {
+    var tbody = document.getElementById('readings-body');
+    if (tbody.rows.length <= 1) return;
+    btn.closest('tr').remove();
+    renumberRows();
+    updateAll();
+    scheduleAutoSave();
+}
+
+function clearReadings() {
+    if (!confirm('Clear all readings?')) return;
+    document.getElementById('readings-body').innerHTML = '';
+    addRow();
+    updateAll();
+    saveData(true);
+}
+
+// ── Persistence ────────────────────────────────────────────────────────────
+
+var autoSaveTimer = null;
+var isSaving = false;
+
+function scheduleAutoSave() {
+    if (TEST_STATUS) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(function() { saveData(true); }, 1200);
+}
+
+function saveData(silent) {
+    clearTimeout(autoSaveTimer);
+    if (isSaving) return;
+    isSaving = true;
+    var rows = getRows();
+    var statusEl = document.getElementById('save-status');
+    if (!silent) {
+        statusEl.className = 'save-status ok';
+        statusEl.textContent = 'Saving…';
+    }
+    fetch('/test/' + SAVE_ID + '/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            readings:     rows,
+            test_date:    document.getElementById('test-date').value || null,
+            timezone:     getTimezone() || null,
+            install_date: document.getElementById('cert-install-date').value || null,
+            converted:    document.getElementById('cert-converted').checked || null,
+            cert_class:   document.getElementById('cert-class').value || null,
+        }),
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        isSaving = false;
+        statusEl.className = 'save-status ' + (d.status === 'ok' ? 'ok' : 'err');
+        statusEl.textContent = d.status === 'ok' ? (silent ? 'Auto-saved' : 'Saved') : 'Error';
+        setTimeout(function() { statusEl.textContent = ''; }, silent ? 1800 : 2500);
+    }).catch(function() {
+        isSaving = false;
+        if (!silent) {
+            statusEl.className = 'save-status err';
+            statusEl.textContent = 'Save failed';
+        }
+    });
+}
+
+// ── Enter-key column navigation ────────────────────────────────────────────
+
+document.getElementById('readings-body').addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    var el = e.target;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'SELECT') return;
+    e.preventDefault();
+
+    var tr = el.closest('tr');
+    var isPressure = el.classList.contains('inp-p');
+    var nextTr = tr.nextElementSibling;
+    if (!nextTr) { addRow(undefined, isPressure); nextTr = tr.nextElementSibling; }
+    if (!nextTr) return;
+
+    // Pressure → next row's time field.
+    // Use setTimeout(0) so our focus call runs AFTER Plotly's internal rAF callbacks
+    // (RAF runs before setTimeout macrotasks in the browser event loop, so this fires last).
+    if (isPressure) {
+        var timeInput = nextTr.querySelector('.inp-time');
+        setTimeout(function() { timeInput.focus(); }, 0);
+        return;
+    }
+
+    // All other fields → same column on next row
+    var td = el.closest('td');
+    var colIndex = Array.from(tr.cells).indexOf(td);
+    var nextEl = nextTr.cells[colIndex] && nextTr.cells[colIndex].querySelector('input, select');
+    if (nextEl) nextEl.focus();
+});
+
+// ── Finalize / Retest ──────────────────────────────────────────────────────
+
+function lockUI() {
+    document.body.classList.add('test-locked');
+    document.querySelectorAll('#readings-body input, #readings-body select').forEach(function(el) {
+        el.disabled = true;
+    });
+    document.getElementById('test-date').disabled = true;
+    document.getElementById('test-tz').disabled = true;
+    document.getElementById('leak-threshold').disabled = true;
+    document.getElementById('cert-install-date').disabled = true;
+    document.getElementById('cert-converted').disabled = true;
+    document.getElementById('cert-class').disabled = true;
+}
+
+function finalizeTest(status) {
+    var label = status === 'pass' ? 'PASSED' : 'FAILED';
+    if (!confirm('Mark this test as ' + label + '? All readings will be locked and cannot be edited.')) return;
+    fetch('/test/' + SAVE_ID + '/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status }),
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === 'ok') { window.location.reload(); }
+        else { alert('Error: ' + (d.error || 'Unknown error')); }
+    }).catch(function() { alert('Network error — could not finalize.'); });
+}
+
+function startRetest() {
+    if (!confirm('Archive this failed test and start a fresh retest on the same segment?')) return;
+    fetch('/test/' + SAVE_ID + '/retest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === 'ok') { window.location.reload(); }
+        else { alert('Error: ' + (d.error || 'Unknown error')); }
+    }).catch(function() { alert('Network error — could not start retest.'); });
+}
+
+function unlockTest() {
+    if (!confirm('Unlock this test? The finalized status will be removed and readings can be edited again.')) return;
+    fetch('/test/' + SAVE_ID + '/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === 'ok') { window.location.reload(); }
+        else { alert('Error: ' + (d.error || 'Unknown error')); }
+    }).catch(function() { alert('Network error — could not unlock test.'); });
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+
+// ── PV Plot modal ──────────────────────────────────────────────────────────
+function unlinkPV() {
+    if (!confirm('Remove the PV plot data from this test? The readings on the PV page will be deleted.')) return;
+    fetch('/test/' + SAVE_ID + '/pv/unlink', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === 'ok') { window.location.reload(); }
+        else { alert('Error: ' + (d.error || 'Unknown error')); }
+    }).catch(function() { alert('Network error — could not unlink PV plot.'); });
+}
+
+function openPVPlot() {
+    // Find the pv_start row time to pass along so the PV page can compute end time
+    var startTime = null;
+    document.querySelectorAll('#readings-body tr').forEach(function(tr) {
+        if (tr.querySelector('.inp-event') && tr.querySelector('.inp-event').value === 'pv_start') {
+            startTime = tr.querySelector('.inp-time').value || null;
+        }
+    });
+    var url = '/pv/' + SAVE_ID + '?from=exec';
+    if (startTime) url += '&start=' + encodeURIComponent(startTime);
+    window.location.href = url;
+}
+
+function openPVModal() {
+    var now = new Date();
+    document.getElementById('pv-start-time-input').value =
+        String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('pv-start-modal').classList.add('active');
+    setTimeout(function() { document.getElementById('pv-start-time-input').focus(); }, 50);
+}
+
+function closePVModal() {
+    document.getElementById('pv-start-modal').classList.remove('active');
+}
+
+function confirmStartPV() {
+    var t = document.getElementById('pv-start-time-input').value;
+    closePVModal();
+    if (t && !TEST_STATUS) {
+        insertRowChronologically({ time: t, event: 'pv_start', comment: 'PV plot started' });
+        saveData(true);
+    }
+    setTimeout(function() {
+        var url = '/pv/' + SAVE_ID + '?from=exec';
+        if (t) url += '&start=' + encodeURIComponent(t);
+        window.location.href = url;
+    }, 300);
+}
+
+(function init() {
+    if (savedTestDate)    document.getElementById('test-date').value = savedTestDate;
+    if (savedTimezone)    document.getElementById('test-tz').value = savedTimezone;
+    if (savedInstallDate) document.getElementById('cert-install-date').value = savedInstallDate;
+    if (savedConverted)   document.getElementById('cert-converted').checked = true;
+    if (savedCertClass)   document.getElementById('cert-class').value = savedCertClass;
+    if (savedReadings.length) {
+        savedReadings.forEach(function(r) { addRow(r); });
+    } else {
+        addRow();
+    }
+    // Auto-add pv_end row when returning from PV page
+    var urlParams = new URLSearchParams(window.location.search);
+    var pvEndTime = urlParams.get('pv_end');
+    if (pvEndTime && !TEST_STATUS) {
+        insertRowChronologically({ time: pvEndTime, event: 'pv_end', comment: 'PV plot ended' });
+        history.replaceState({}, '', window.location.pathname);
+        saveData(true);
+    }
+    updateAll();
+    updateCert();  // run after rows loaded so pressures are available; also applies regime-based UI adjustments
+    if (TEST_STATUS) lockUI();
+})();
+</script>
+
+<div class="modal-overlay" id="pv-start-modal" onclick="if(event.target===this)closePVModal()">
+    <div class="modal-box">
+        <h3>Start PV Plot</h3>
+        <label>Start time on test log</label>
+        <input type="time" id="pv-start-time-input">
+        <div class="modal-actions">
+            <button class="btn btn-accent" onclick="confirmStartPV()" style="flex:1;">Go to PV Plot &#8594;</button>
+            <button class="btn" onclick="closePVModal()" style="flex:0 0 auto; background:#455a64; color:#bdc3c7; padding:9px 14px;">Cancel</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>

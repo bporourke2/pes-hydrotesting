@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Project Setup — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/tooltips.css">
+    <script src="/static/tooltips.js" defer></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
@@ -50,7 +52,7 @@
     <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
 </div>
 
-<img src="/static/peslogo.png" alt="PES Logo" class="logo">
+<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="logo"></a>
 <h1>{{ 'Edit Project Info' if next_page == 'results' else 'Project Setup' }}</h1>
 <p class="subtitle">{{ 'Update project details for this analysis' if next_page == 'results' else 'Enter project details before uploading survey data' }}</p>
 
@@ -62,7 +64,7 @@
         <h2>Project Information</h2>
         <div class="field-grid">
             <div>
-                <label>Governing Code <span class="req">*</span></label>
+                <label><span class="tt tt-dark" data-tt="Design standard under which the pipeline was built and the test is performed (e.g., ASME B31.4, B31.8, CSA Z662) — determines required test duration, pressure levels, and acceptance criteria">Governing Code</span> <span class="req">*</span></label>
                 <select name="governing_code" required>
                     {% for code in governing_codes %}
                     <option value="{{ code }}" {% if pi.get('governing_code') == code %}selected{% endif %}>{{ code }}</option>
@@ -89,7 +91,7 @@
                 {% endif %}
             </div>
             <div>
-                <label>Portfolio</label>
+                <label><span class="tt tt-dark" data-tt="Project grouping used to organize related test segments — required before saving an analysis">Portfolio</span></label>
                 <select name="portfolio_id" id="portfolio-select" onchange="handlePortfolioChange(this)">
                     <option value="">— None / Assign later —</option>
                     {% for pf in portfolios %}
@@ -105,7 +107,7 @@
                 </div>
             </div>
             <div>
-                <label>Spread</label>
+                <label><span class="tt tt-dark" data-tt="A defined pipeline construction or testing section — typically corresponds to a continuous pipe run within a portfolio">Spread</span></label>
                 <select name="spread" id="spread-select" onchange="handleSpreadChange(this)">
                     <option value="">— Select portfolio first —</option>
                     <option value="__new__">+ New spread…</option>

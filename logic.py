@@ -8,6 +8,32 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go  # Added for interactive plots
 
+# API 5L Nominal Pipe Sizes → Outside Diameter (inches)
+NPS_OD = {
+    '0.125': 0.405, '0.25': 0.540, '0.375': 0.675, '0.5': 0.840,
+    '0.75': 1.050, '1': 1.315, '1.25': 1.660, '1.5': 1.900,
+    '2': 2.375, '2.5': 2.875, '3': 3.500, '3.5': 4.000,
+    '4': 4.500, '5': 5.563, '6': 6.625, '8': 8.625,
+    '10': 10.750, '12': 12.750, '14': 14.000, '16': 16.000,
+    '18': 18.000, '20': 20.000, '22': 22.000, '24': 24.000,
+    '26': 26.000, '28': 28.000, '30': 30.000, '32': 32.000,
+    '34': 34.000, '36': 36.000, '38': 38.000, '40': 40.000,
+    '42': 42.000, '44': 44.000, '46': 46.000, '48': 48.000,
+    '52': 52.000, '56': 56.000, '60': 60.000, '65': 65.000,
+}
+
+def nps_to_od(nps):
+    """Return OD (inches) for a given NPS designation per API 5L, or None."""
+    return NPS_OD.get(str(nps))
+
+def od_to_nps(od):
+    """Reverse-lookup NPS key for a given OD value, or None."""
+    od = float(od)
+    for k, v in NPS_OD.items():
+        if abs(v - od) < 0.001:
+            return k
+    return None
+
 def parse_station(st):
     st = str(st).replace(',', '')  # Handle commas
     if '+' in st:
@@ -351,10 +377,14 @@ class Section:
             raise ValueError("Outer diameter (OD) must be greater than zero.")
 
         # Validate column mapping exists in DataFrame
-        for key in ('station', 'elev', 'wt'):
+        for key in ('station', 'elev'):
             col_name = col_map.get(key)
             if not col_name or col_name not in app.full_df.columns:
                 raise ValueError(f"Column '{col_name}' (mapped as {key}) not found in data file. Available columns: {', '.join(app.full_df.columns[:10])}")
+        if col_map.get('wt') != '__constant__':
+            wt_col_name = col_map.get('wt')
+            if not wt_col_name or wt_col_name not in app.full_df.columns:
+                raise ValueError(f"Column '{wt_col_name}' (mapped as wt) not found in data file. Available columns: {', '.join(app.full_df.columns[:10])}")
 
         start = parse_station(params['start'])
         end = parse_station(params['end'])
@@ -372,7 +402,10 @@ class Section:
 
         data['Station'] = pd.to_numeric(data[station_col].apply(lambda v: parse_station(v)), errors='coerce')
         data['Elevation'] = pd.to_numeric(data[col_map['elev']], errors='coerce')
-        data['WT'] = pd.to_numeric(data[col_map['wt']], errors='coerce')
+        if col_map.get('wt') == '__constant__':
+            data['WT'] = float(col_map.get('wt_constant', 0.5))
+        else:
+            data['WT'] = pd.to_numeric(data[col_map['wt']], errors='coerce')
         data = data.dropna(subset=['Station', 'Elevation', 'WT'])
 
         # Keep only the columns we need to avoid merge collisions with reserved names
@@ -528,9 +561,315 @@ class Section:
         self.points = self.points.merge(df_sorted[['Station', 'Prepack_Profile', 'Cum_Gal']], on='Station', how='left')
         self.points['Station_Formatted'] = self.points['Station'].apply(station_format)
         self.table_data = self.points
-        
+
         # Add Percent_SMYS
         self.points['Percent_SMYS'] = (self.points['Local_P'] / (2 * app.smys * self.points['WT'] / app.od)) * 100
         # Sort table data by station so Cum_Gal is monotonically increasing
         self.table_data = self.points.sort_values('Station').reset_index(drop=True)
 
+
+def rupture_analysis(stations, elevations, rup_station, od, avg_wt, specific_weight=62.4):
+    """
+    Calculate fluid release volumes following a pipe rupture.
+
+    Physics: When the pipe ruptures at rup_station, fluid drains toward the rupture
+    under gravity. In a closed section, atmospheric pressure at the rupture opening
+    creates suction that can lift fluid up to a hydraulic head height above the rupture.
+    Any point at or above (rupture_elevation + hydraulic_head) forms an "airlock" that
+    blocks further drainage — the atmospheric pressure cannot push fluid over that barrier.
+
+    Args:
+        stations:        sorted array-like of station values (ft)
+        elevations:      array-like of elevations corresponding to stations (ft)
+        rup_station:     station of the rupture (ft)
+        od:              pipe outside diameter (inches)
+        avg_wt:          average wall thickness (inches)
+        specific_weight: fluid specific weight (lb/ft³), default 62.4 (water)
+
+    Returns dict with volumes (ft³, gal, bbl), drained lengths, and profile arrays.
+    """
+    stations = np.array(stations, dtype=float)
+    elevations = np.array(elevations, dtype=float)
+
+    # Sort ascending by station
+    order = np.argsort(stations)
+    stations = stations[order]
+    elevations = elevations[order]
+
+    # Snap rupture to nearest survey point
+    rup_idx = int(np.argmin(np.abs(stations - rup_station)))
+    rup_elev = float(elevations[rup_idx])
+    actual_rup_stn = float(stations[rup_idx])
+
+    # Atmospheric pressure at rupture elevation (standard atmosphere formula)
+    elev_m = rup_elev * 0.3048
+    atm_pa = 101325.0 * (1.0 - 2.25577e-5 * elev_m) ** 5.25588
+    atm_psi = atm_pa / 6894.757
+    # Hydraulic head: pressure head in feet of fluid (P [lb/ft²] / γ [lb/ft³])
+    hydraulic_head = (atm_psi * 144.0) / specific_weight
+    threshold = rup_elev + hydraulic_head
+
+    # Pipe geometry
+    id_in = od - 2.0 * avg_wt
+    id_ft = id_in / 12.0
+    pipe_area = math.pi * (id_ft / 2.0) ** 2  # ft²
+
+    n = len(stations)
+
+    # UPSTREAM MAIN: descending-envelope segments above threshold.
+    # Replicates the spreadsheet "Length Upstream" logic: a segment at i counts when
+    # elev[i] >= threshold AND this row sets a new running-maximum going upstream
+    # (i.e., it is on the monotonically-decreasing envelope from local peaks toward the
+    # rupture).  Ascending flanks within the above-threshold zone do NOT count because
+    # fluid sitting on an uphill slope drains toward the local low point, not the rupture.
+    # The first point (i=0, section boundary) is excluded, matching the spreadsheet's
+    # up-bound row which produces N/A and prevents that segment from being counted.
+    up_upslope = [0.0] * n  # elevation at nearest downstream local peak above threshold
+    up_progression = [0.0] * n  # running max of up_upslope from each i to rup_idx
+    for i in range(rup_idx - 1, -1, -1):
+        if elevations[i] >= threshold and elevations[i] > elevations[i + 1]:
+            up_upslope[i] = elevations[i]
+        else:
+            up_upslope[i] = up_upslope[i + 1]
+        up_progression[i] = max(up_upslope[i], up_progression[i + 1])
+    upstream_main = 0.0
+    for i in range(1, rup_idx):  # skip i=0 (section-start boundary)
+        if elevations[i] >= threshold and up_progression[i] > up_progression[i + 1]:
+            upstream_main += abs(stations[i + 1] - stations[i])
+
+    # UPSTREAM POCKET: the run between rup_elev and threshold on the first ascending
+    # slope encountered going upstream from the rupture.  Find the apex of that slope
+    # (first local peak above rup_elev) then count its descending segments toward the
+    # rupture while rup_elev <= elev <= threshold.
+    first_peak_up = None
+    in_above_zone = False
+    for i in range(rup_idx - 1, 0, -1):
+        if elevations[i] <= rup_elev:
+            if in_above_zone:
+                break  # left the above-rup_elev zone — stop search
+            continue
+        in_above_zone = True
+        if elevations[i] > elevations[i - 1]:  # apex: going further upstream elev decreases
+            first_peak_up = i
+            break
+
+    upstream_pocket = 0.0
+    if first_peak_up is not None:
+        pk_upslope = [0.0] * n
+        pk_progression = [0.0] * n
+        for i in range(rup_idx - 1, first_peak_up - 1, -1):
+            if elevations[i] >= rup_elev and elevations[i] > elevations[i + 1]:
+                pk_upslope[i] = elevations[i]
+            else:
+                pk_upslope[i] = pk_upslope[i + 1]
+            pk_progression[i] = max(pk_upslope[i], pk_progression[i + 1])
+        for i in range(first_peak_up, rup_idx):
+            if rup_elev <= elevations[i] <= threshold and pk_progression[i] > pk_progression[i + 1]:
+                upstream_pocket += abs(stations[i + 1] - stations[i])
+
+    upstream_drained = upstream_main + upstream_pocket
+
+    # DOWNSTREAM MAIN: ascending-envelope segments above threshold going downstream.
+    # Mirror of upstream main but now segments count when they are on an ascending run
+    # away from the rupture that sets new elevation records, and elev > threshold.
+    # Seeded at rup_elev; Elev_plot condition (from spreadsheet) requires
+    # threshold <= progression < max_downstream_elev.
+    max_down_elev = max(elevations[rup_idx:])
+    dn_main_prog = [0.0] * n
+    dn_main_prog[rup_idx] = rup_elev
+    for i in range(rup_idx + 1, n):
+        is_main = elevations[i] > threshold and elevations[i] > elevations[i - 1]
+        dn_main_prog[i] = max(elevations[i] if is_main else 0.0, dn_main_prog[i - 1])
+    downstream_main = 0.0
+    for i in range(rup_idx + 1, n):
+        if (threshold <= dn_main_prog[i] < max_down_elev and
+                dn_main_prog[i] > dn_main_prog[i - 1]):
+            downstream_main += abs(stations[i] - stations[i - 1])
+
+    # DOWNSTREAM POCKET: ascending segments between rup_elev and threshold immediately
+    # downstream of the rupture.  Seeded at rup_elev; includes the incoming (last
+    # upstream) segment at the rupture row itself.
+    dn_pocket_prog = [0.0] * n
+    dn_pocket_prog[rup_idx] = rup_elev
+    for i in range(rup_idx + 1, n):
+        is_pocket = elevations[i] > rup_elev and elevations[i] > elevations[i - 1]
+        dn_pocket_prog[i] = max(elevations[i] if is_pocket else 0.0, dn_pocket_prog[i - 1])
+    downstream_pocket = 0.0
+    for i in range(rup_idx, n):
+        prev_prog = dn_pocket_prog[i - 1] if i > 0 else 0.0
+        if elevations[i] <= threshold and dn_pocket_prog[i] > prev_prog:
+            downstream_pocket += abs(stations[i] - stations[i - 1])
+
+    downstream_drained = downstream_main + downstream_pocket
+
+    # Section lengths
+    total_len = float(abs(stations[-1] - stations[0]))
+    up_len = float(abs(actual_rup_stn - stations[0]))
+    down_len = float(abs(stations[-1] - actual_rup_stn))
+
+    def vols(ft3):
+        gal = ft3 * 7.4805
+        bbl = gal / 42.0
+        return round(ft3, 2), round(gal, 1), round(bbl, 2)
+
+    tv = vols(pipe_area * total_len)
+    uv = vols(pipe_area * up_len)
+    dv = vols(pipe_area * down_len)
+    ur = vols(pipe_area * upstream_drained)
+    dr = vols(pipe_area * downstream_drained)
+    tr_ft3 = ur[0] + dr[0]
+    tr = vols(tr_ft3)
+    pct = tr[0] / tv[0] if tv[0] > 0 else 0.0
+
+    # Build drain-status array for charting.
+    drained_flags = [False] * n
+    drained_flags[rup_idx] = True
+
+    # Upstream main
+    for i in range(1, rup_idx):
+        if elevations[i] >= threshold and up_progression[i] > up_progression[i + 1]:
+            drained_flags[i] = True
+            drained_flags[i + 1] = True
+
+    # Upstream pocket
+    if first_peak_up is not None:
+        for i in range(first_peak_up, rup_idx):
+            if rup_elev <= elevations[i] <= threshold and pk_progression[i] > pk_progression[i + 1]:
+                drained_flags[i] = True
+                drained_flags[i + 1] = True
+
+    # Downstream main
+    for i in range(rup_idx + 1, n):
+        if (threshold <= dn_main_prog[i] < max_down_elev and
+                dn_main_prog[i] > dn_main_prog[i - 1]):
+            drained_flags[i] = True
+            drained_flags[i - 1] = True
+
+    # Downstream pocket
+    for i in range(rup_idx, n):
+        prev_prog = dn_pocket_prog[i - 1] if i > 0 else 0.0
+        if elevations[i] <= threshold and dn_pocket_prog[i] > prev_prog:
+            drained_flags[i] = True
+            if i > 0:
+                drained_flags[i - 1] = True
+
+    drained_stns = [stations[i] for i, d in enumerate(drained_flags) if d]
+    drained_lo = float(min(drained_stns)) if drained_stns else None
+    drained_hi = float(max(drained_stns)) if drained_stns else None
+
+    return {
+        'rup_station': actual_rup_stn,
+        'rup_elev': round(rup_elev, 3),
+        'atm_psi': round(atm_psi, 4),
+        'hydraulic_head_ft': round(hydraulic_head, 3),
+        'threshold_elev': round(threshold, 3),
+        'pipe_id_in': round(id_in, 3),
+        'pipe_area_ft2': round(pipe_area, 4),
+        'specific_weight': specific_weight,
+        'upstream_drained_ft': round(upstream_drained, 2),
+        'downstream_drained_ft': round(downstream_drained, 2),
+        'total_drained_ft': round(upstream_drained + downstream_drained, 2),
+        'total_vol_ft3': tv[0], 'total_vol_gal': tv[1], 'total_vol_bbl': tv[2],
+        'upstream_vol_ft3': uv[0], 'upstream_vol_gal': uv[1], 'upstream_vol_bbl': uv[2],
+        'downstream_vol_ft3': dv[0], 'downstream_vol_gal': dv[1], 'downstream_vol_bbl': dv[2],
+        'upstream_released_ft3': ur[0], 'upstream_released_gal': ur[1], 'upstream_released_bbl': ur[2],
+        'downstream_released_ft3': dr[0], 'downstream_released_gal': dr[1], 'downstream_released_bbl': dr[2],
+        'total_released_ft3': tr[0], 'total_released_gal': tr[1], 'total_released_bbl': tr[2],
+        'pct_released': round(pct * 100, 2),
+        'drained_station_lo': drained_lo,
+        'drained_station_hi': drained_hi,
+        'stations': stations.tolist(),
+        'elevations': elevations.tolist(),
+        'drained_flags': drained_flags,
+    }
+
+
+def temp_correction_factor(od, avg_wt):
+    """
+    Returns K (psi/°F) — pressure change per °F of pipe temperature change for a
+    water-filled, sealed steel pipeline.
+
+    Derivation (constant-volume constraint, thin-wall approximation):
+        (β_w - 2α_s) ΔT = (C_w + D/2tE) ΔP
+    where:
+        β_w  = 2.07e-4 /°F   volumetric thermal expansion of water at ~60°F
+        α_s  = 6.5e-6  /°F   linear thermal expansion of steel
+        C_w  = 3.3e-6  /psi  compressibility of water
+        D/(2tE)              hoop compliance of pipe wall (restrained longitudinally)
+    """
+    E_steel = 30.0e6   # psi
+    beta_w  = 2.07e-4  # /°F
+    alpha_s = 6.5e-6   # /°F
+    C_w     = 3.3e-6   # /psi
+    C_pipe  = od / (2.0 * avg_wt * E_steel)
+    return round((beta_w - 2.0 * alpha_s) / (C_w + C_pipe), 2)
+
+
+def multi_rupture_analysis(stations, elevations, rup_stations, od, avg_wt, specific_weight=62.4):
+    """
+    Calculate combined fluid release from multiple simultaneous rupture points.
+    Each rupture is analysed independently; the union of drained segments gives combined volumes.
+    """
+    stations_arr = np.array(stations, dtype=float)
+    elevations_arr = np.array(elevations, dtype=float)
+    order = np.argsort(stations_arr)
+    stations_arr = stations_arr[order]
+    elevations_arr = elevations_arr[order]
+    n = len(stations_arr)
+
+    per_rupture = []
+    union_drained = [False] * n
+    for rs in rup_stations:
+        r = rupture_analysis(stations_arr.tolist(), elevations_arr.tolist(), rs, od, avg_wt, specific_weight)
+        per_rupture.append(r)
+        for i, d in enumerate(r['drained_flags']):
+            if d:
+                union_drained[i] = True
+
+    pipe_area = per_rupture[0]['pipe_area_ft2']
+    total_len = float(abs(stations_arr[-1] - stations_arr[0]))
+
+    def vols(ft3):
+        gal = ft3 * 7.4805
+        bbl = gal / 42.0
+        return round(ft3, 2), round(gal, 1), round(bbl, 2)
+
+    tv = vols(pipe_area * total_len)
+    drained_len = 0.0
+    for i in range(1, n):
+        if union_drained[i] or union_drained[i - 1]:
+            drained_len += float(abs(stations_arr[i] - stations_arr[i - 1]))
+    tr = vols(pipe_area * drained_len)
+    pct = tr[0] / tv[0] if tv[0] > 0 else 0.0
+
+    # Attribute each drained segment to the nearest claiming rupture so that
+    # attributed volumes sum exactly to the combined total (no double-counting).
+    attributed_ft = [0.0] * len(per_rupture)
+    for i in range(1, n):
+        if not (union_drained[i] or union_drained[i - 1]):
+            continue
+        seg_len = float(abs(stations_arr[i] - stations_arr[i - 1]))
+        seg_mid = (stations_arr[i] + stations_arr[i - 1]) / 2.0
+        claiming = [j for j, r in enumerate(per_rupture)
+                    if r['drained_flags'][i] or r['drained_flags'][i - 1]]
+        if not claiming:
+            continue
+        nearest = min(claiming, key=lambda j: abs(per_rupture[j]['rup_station'] - seg_mid))
+        attributed_ft[nearest] += seg_len
+
+    for j, r in enumerate(per_rupture):
+        av = vols(pipe_area * attributed_ft[j])
+        r['attributed_released_ft3'] = av[0]
+        r['attributed_released_gal'] = av[1]
+        r['attributed_released_bbl'] = av[2]
+
+    return {
+        'per_rupture': per_rupture,
+        'union_drained_flags': union_drained,
+        'rup_stations': [r['rup_station'] for r in per_rupture],
+        'total_vol_ft3': tv[0], 'total_vol_gal': tv[1], 'total_vol_bbl': tv[2],
+        'total_released_ft3': tr[0], 'total_released_gal': tr[1], 'total_released_bbl': tr[2],
+        'pct_released': round(pct * 100, 2),
+        'stations': stations_arr.tolist(),
+        'elevations': elevations_arr.tolist(),
+    }
