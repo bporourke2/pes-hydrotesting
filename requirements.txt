@@ -7,3 +7,5 @@ plotly==5.24.0  # Interactive plots
 authlib==1.3.2  # OIDC/OAuth2 client
 requests==2.32.3  # HTTP client for token exchange
 python-dotenv==1.0.1  # Load .env file
+flask-socketio>=5.3.6  # WebSocket real-time sync
+eventlet>=0.36         # Async worker for Flask-SocketIO

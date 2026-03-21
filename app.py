@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify, abort
+from flask_socketio import SocketIO, join_room, leave_room
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
@@ -53,6 +54,7 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 Compress(app)
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
 
 # Survey DataFrame cache: LRU with max 20 entries
 _df_cache = OrderedDict()
@@ -1734,6 +1736,11 @@ def test_save(save_id):
     payload['last_updated'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     data['test_data'] = payload
     write_save(data)
+    socketio.emit('readings_updated', {
+        'readings':     payload.get('readings', []),
+        'last_updated': payload['last_updated'],
+        'client_id':    payload.get('client_id'),
+    }, room=f'test_{save_id}')
     log_action('TEST_SAVE', f'id={save_id} rows={len(payload["readings"])}')
     return jsonify({'status': 'ok'})
 
@@ -1879,6 +1886,18 @@ def equipment_setup(save_id):
     )
 
 
+@socketio.on('join_test')
+def handle_join(data):
+    save_id = data.get('save_id', '')
+    validate_save_id(save_id)
+    join_room(f'test_{save_id}')
+
+@socketio.on('leave_test')
+def handle_leave(data):
+    save_id = data.get('save_id', '')
+    leave_room(f'test_{save_id}')
+
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='PES Hydrotest Tool')
@@ -1890,4 +1909,4 @@ if __name__ == '__main__':
         DOCS_DIR = os.path.join(_APP_DIR, 'ref')
         logger.info('DEV MODE — reference docs: ref/')
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)

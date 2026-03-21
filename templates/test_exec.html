@@ -6,6 +6,7 @@
     <title>Test Execution — {{ save_name }}</title>
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         :root { --sidebar-width: 340px; --primary-bg: #2c3e50; --accent: #16a085; --text-light: #ecf0f1; }
         * { box-sizing: border-box; }
@@ -414,6 +415,20 @@ const AVG_WT_INCHES   = {{ avg_wt if avg_wt else 'null' }};
 const TOTAL_LEN_FT    = {{ total_length_ft if total_length_ft else 'null' }};
 const UNRESTR_LEN_FT  = {{ (p.unrestrained_length | float) if p.get('unrestrained_length') else '0' }};
 const EQUIPMENT = {{ equipment_data | tojson }};
+const CLIENT_ID = Math.random().toString(36).substr(2, 9);
+const WATCH_MODE = new URLSearchParams(window.location.search).get('watch') === '1';
+
+// ── WebSocket real-time sync ──────────────────────────────────────────────
+const socket = io();
+socket.emit('join_test', { save_id: SAVE_ID });
+window.addEventListener('beforeunload', function() {
+    socket.emit('leave_test', { save_id: SAVE_ID });
+});
+socket.on('readings_updated', function(data) {
+    if (data.client_id === CLIENT_ID) return;
+    rebuildTableFromReadings(data.readings);
+    updateAll();
+});
 
 // Derive gauge tolerance in psi from equipment data.
 // Uses primary Pressure Recorder, falls back to primary Pressure Gauge.
@@ -1223,8 +1238,14 @@ function clearReadings() {
 var autoSaveTimer = null;
 var isSaving = false;
 
+function rebuildTableFromReadings(readings) {
+    var tbody = document.getElementById('readings-body');
+    tbody.innerHTML = '';
+    (readings || []).forEach(function(r) { addRow(r, true); });
+}
+
 function scheduleAutoSave() {
-    if (TEST_STATUS) return;
+    if (TEST_STATUS || WATCH_MODE) return;
     clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(function() { saveData(true); }, 1200);
 }
@@ -1249,6 +1270,7 @@ function saveData(silent) {
             install_date: document.getElementById('cert-install-date').value || null,
             converted:    document.getElementById('cert-converted').checked || null,
             cert_class:   document.getElementById('cert-class').value || null,
+            client_id:    CLIENT_ID,
         }),
     }).then(function(r) { return r.json(); }).then(function(d) {
         isSaving = false;
@@ -1423,6 +1445,14 @@ function confirmStartPV() {
     updateAll();
     updateCert();  // run after rows loaded so pressures are available; also applies regime-based UI adjustments
     if (TEST_STATUS) lockUI();
+    if (WATCH_MODE) {
+        document.querySelectorAll('input, select, button, textarea').forEach(function(el) {
+            el.disabled = true;
+        });
+        document.getElementById('status-label').insertAdjacentHTML('beforeend',
+            '<span style="font-size:0.65em; background:#e74c3c; color:white; padding:2px 7px; border-radius:3px; margin-left:10px; vertical-align:middle; letter-spacing:0.5px;">LIVE</span>'
+        );
+    }
 })();
 </script>
 
