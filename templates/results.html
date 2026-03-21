@@ -6,6 +6,7 @@
     <title>Hydrotest Engineering Analysis</title>
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
@@ -497,5 +498,22 @@
         rows.forEach(r => tbody.appendChild(r));
     }
 </script>
+
+{% if save_id %}
+<script>
+(function() {
+    var SAVE_ID = {{ save_id | tojson }};
+    var socket = io();
+    socket.emit('join_results', { save_id: SAVE_ID });
+    window.addEventListener('beforeunload', function() {
+        socket.emit('leave_results', { save_id: SAVE_ID });
+    });
+    socket.on('results_updated', function(data) {
+        if (data.save_id !== SAVE_ID) return;
+        window.location.href = '/load/' + SAVE_ID;
+    });
+})();
+</script>
+{% endif %}
 </body>
 </html>

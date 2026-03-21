@@ -1325,6 +1325,14 @@ def results():
         restored_version = request.args.get('restored_version', type=int)
         min_bound_violations = sec.min_bound_violations
         smys_bound_violations = sec.smys_bound_violations
+        # Persist param changes and notify other viewers on every POST
+        if request.method == 'POST' and save_id and current_save:
+            current_save['params'] = p
+            try:
+                write_save(current_save)
+                socketio.emit('results_updated', {'save_id': save_id}, room=f'results_{save_id}')
+            except Exception:
+                pass
         return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
     except ValueError as ve:
         from markupsafe import escape
@@ -1436,6 +1444,7 @@ def save_analysis():
             save_data['test_history'] = old_test_history
 
     write_save(save_data)
+    socketio.emit('results_updated', {'save_id': save_id}, room=f'results_{save_id}')
 
     action = 'SAVE_VERSION' if overwrite_id else 'SAVE_NEW'
     log_action(action, f'id={save_id} name="{save_data["name"]}" v{new_version}')
@@ -1896,6 +1905,17 @@ def handle_join(data):
 def handle_leave(data):
     save_id = data.get('save_id', '')
     leave_room(f'test_{save_id}')
+
+@socketio.on('join_results')
+def handle_join_results(data):
+    save_id = data.get('save_id', '')
+    validate_save_id(save_id)
+    join_room(f'results_{save_id}')
+
+@socketio.on('leave_results')
+def handle_leave_results(data):
+    save_id = data.get('save_id', '')
+    leave_room(f'results_{save_id}')
 
 
 if __name__ == '__main__':
