@@ -42,10 +42,12 @@
 
         /* Status banner */
         .status-banner { border-radius: 8px; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-        .status-banner.stable  { background: rgba(39,174,96,0.15);  border: 1px solid rgba(39,174,96,0.4); }
-        .status-banner.monitor { background: rgba(243,156,18,0.15); border: 1px solid rgba(243,156,18,0.4); }
-        .status-banner.leak    { background: rgba(231,76,60,0.15);  border: 1px solid rgba(231,76,60,0.4); }
-        .status-banner.waiting { background: rgba(127,140,141,0.12); border: 1px solid rgba(127,140,141,0.3); }
+        .status-banner.stable       { background: rgba(39,174,96,0.15);   border: 1px solid rgba(39,174,96,0.4); }
+        .status-banner.monitor      { background: rgba(243,156,18,0.15);  border: 1px solid rgba(243,156,18,0.4); }
+        .status-banner.leak         { background: rgba(231,76,60,0.15);   border: 1px solid rgba(231,76,60,0.4); }
+        .status-banner.waiting      { background: rgba(127,140,141,0.12); border: 1px solid rgba(127,140,141,0.3); }
+        .status-banner.approaching  { background: rgba(230,126,34,0.2);   border: 2px solid rgba(230,126,34,0.7); }
+        .status-banner.overpressure { background: rgba(231,76,60,0.35);   border: 2px solid rgba(231,76,60,0.9); }
         .status-label { font-size: 1.15em; font-weight: 700; display: flex; align-items: center; gap: 10px; }
         .status-meta { font-size: 0.84em; color: #bdc3c7; display: flex; gap: 24px; }
         .status-meta span { display: flex; flex-direction: column; }
@@ -59,9 +61,9 @@
         .table-box { background: #16213e; border-radius: 8px; padding: 18px 20px; }
         .table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
         .table-header h3 { margin: 0; font-size: 0.95em; color: #bdc3c7; }
-        .table-scroll { overflow-x: auto; }
+        .table-scroll { overflow-x: auto; overflow-y: auto; max-height: 50vh; }
         table { width: 100%; border-collapse: collapse; min-width: 1250px; }
-        th { background: #1a252f; padding: 8px 6px; text-align: center; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: #95a5a6; border-bottom: 1px solid #2c3e50; white-space: nowrap; }
+        th { background: #1a252f; padding: 8px 6px; text-align: center; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: #95a5a6; border-bottom: 1px solid #2c3e50; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
         th:first-child { text-align: left; padding-left: 8px; }
         td { padding: 3px 4px; border-bottom: 1px solid #1a252f; text-align: center; vertical-align: middle; }
         td:first-child { text-align: left; font-size: 0.8em; color: #7f8c8d; padding-left: 8px; min-width: 28px; }
@@ -116,7 +118,7 @@
         body.test-locked #test-date,
         body.test-locked #test-tz,
         body.test-locked #leak-threshold,
-        body.test-locked #cert-install-date,
+        body.test-locked #cert-install-period,
         body.test-locked #cert-converted,
         body.test-locked #cert-class { opacity: 0.6; cursor: not-allowed; }
         /* Volume balance / bleed */
@@ -180,6 +182,8 @@
             td select.inp-event { padding: 7px 3px; min-height: 36px; font-size: 0.82em; }
             .add-row-btn { padding: 10px 16px; font-size: 0.9em; }
         }
+        /* Suppress CSS tooltips inside the scroll container — portal JS handles them instead */
+        .table-scroll .tt::before, .table-scroll .tt::after { display: none !important; }
     </style>
 </head>
 <body>
@@ -196,7 +200,13 @@
 <div class="sidebar">
     <div class="sidebar-header">
         <a class="logo-link" href="/"><img src="/static/peslogo.png" alt="PES"></a>
-        <a href="/equipment/{{ save_id }}">&#8592; Back to Equipment Setup</a>
+        {% if equipment_data %}
+        <a href="/equipment/{{ save_id }}" style="font-size:0.78em; color:#7f8c8d;">&#9998; Edit Equipment</a>
+        &nbsp;&nbsp;
+        <a href="/load/{{ save_id }}" style="font-size:0.78em; color:#7f8c8d;">&#8592; Analysis</a>
+        {% else %}
+        <a href="/equipment/{{ save_id }}">&#8592; Equipment Setup (required)</a>
+        {% endif %}
         <h2>Test Execution{% if test_attempt > 1 %}<span class="attempt-badge">Attempt {{ test_attempt }}</span>{% endif %}</h2>
         <p>{{ save_name }}{% if portfolio_name %} &nbsp;·&nbsp; {{ portfolio_name }}{% endif %}</p>
     </div>
@@ -259,8 +269,13 @@
 
     <div class="sidebar-section">
         <h3>MAOP Certification</h3>
-        <label>Install Date <span style="font-size:0.78em; color:#7f8c8d;">(determines applicable CFR provisions)</span></label>
-        <input type="date" id="cert-install-date" oninput="updateCert(); scheduleAutoSave();" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;">
+        <label>Install Period <span style="font-size:0.78em; color:#7f8c8d;">(determines applicable CFR provisions)</span></label>
+        <select id="cert-install-period" onchange="updateCert(); scheduleAutoSave();" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;">
+            <option value="">— Select period</option>
+            <option value="0">Pre-Nov 12, 1970</option>
+            <option value="1">Nov 12, 1970 – Jun 30, 2020</option>
+            <option value="2">Jul 1, 2020 and after</option>
+        </select>
         <label id="cert-class-label" style="margin-top:10px;">Class Location</label>
         <select id="cert-class" onchange="updateCert(); scheduleAutoSave();" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;">
             <option value="">— Select to certify</option>
@@ -406,6 +421,7 @@ const GAUGE_UPPER = {{ gauge_upper if gauge_upper else 'null' }};
 const SAVE_ID     = "{{ save_id }}";
 const TEST_STATUS     = {{ (test_status | tojson) if test_status else 'null' }};
 const TEST_SITE_ELEV  = {{ test_site_elev if test_site_elev is not none else 'null' }};
+const GAUGE_ELEV      = {{ gauge_elev if gauge_elev is not none else 'null' }};
 const HIGH_ELEV       = {{ high_elev if high_elev is not none else 'null' }};
 const LOW_ELEV        = {{ low_elev if low_elev is not none else 'null' }};
 const HEAD_FACTOR     = {{ p.get('head_factor', 0.433) | float }};
@@ -601,7 +617,7 @@ function getTestDurationHours(rows, refIdx) {
 const savedReadings    = {{ (test_data.readings | tojson) if test_data and test_data.readings else '[]' }};
 const savedTestDate    = {{ (test_data.test_date | tojson) if test_data and test_data.test_date else 'null' }};
 const savedTimezone    = {{ (test_data.timezone  | tojson) if test_data and test_data.timezone  else 'null' }};
-const savedInstallDate = {{ (test_data.install_date | tojson) if test_data and test_data.install_date else 'null' }};
+const savedInstallPeriod = {{ (test_data.get('install_period') | tojson) if test_data else 'null' }};
 const savedConverted   = {{ (test_data.converted | tojson) if test_data and test_data.converted else 'false' }};
 const savedCertClass   = {{ (test_data.cert_class | tojson) if test_data and test_data.cert_class else 'null' }};
 
@@ -765,6 +781,20 @@ function updateStatus(rows, calcs, empiricalK, volBalance) {
         state = 'monitor'; icon = '&#128308;'; text = 'MONITOR CLOSELY';
     } else {
         state = 'stable';  icon = '&#9989;'; text = 'STABLE';
+    }
+
+    // Overpressure check overrides deviation-based state
+    if (GAUGE_UPPER !== null && !isNaN(rows[rows.length - 1].pressure)) {
+        var latestPressure = rows[rows.length - 1].pressure;
+        if (latestPressure > GAUGE_UPPER) {
+            state = 'overpressure';
+            icon = '&#9888;';
+            text = 'OVERPRESSURE \u2014 EXCEEDS UPPER LIMIT';
+        } else if (GAUGE_LOWER !== null && latestPressure > GAUGE_UPPER - 0.1 * (GAUGE_UPPER - GAUGE_LOWER)) {
+            state = 'approaching';
+            icon = '&#9888;';
+            text = 'CAUTION \u2014 APPROACHING UPPER LIMIT';
+        }
     }
 
     banner.classList.add(state);
@@ -1037,7 +1067,7 @@ function updateAll() {
 
 function updateCert() {
     var el          = document.getElementById('cert-result');
-    var installDate = document.getElementById('cert-install-date').value || null;
+    var periodStr   = document.getElementById('cert-install-period').value;
     var clsEl       = document.getElementById('cert-class');
     var classLblEl  = document.getElementById('cert-class-label');
     var converted   = document.getElementById('cert-converted').checked;
@@ -1062,13 +1092,8 @@ function updateCert() {
         var cls = clsEl.value;
         if (!cls) { el.innerHTML = ''; return; }
 
-        var periodIdx = getPeriodIndex(installDate);
-        if (periodIdx === null) {
-            // No date entered — show all three factors for reference
-            var f = CLASS_FACTORS_192[cls];
-            el.innerHTML = '<p class="hint" style="margin-top:8px;">Enter install date to determine applicable factor. Class ' + cls + ' factors: ÷' + f[0].toFixed(2) + ' (pre-Nov 1970) · ÷' + f[1].toFixed(2) + ' (1970–2020) · ÷' + f[2].toFixed(2) + ' (Jul 2020+)</p>';
-            return;
-        }
+        if (periodStr === '') { el.innerHTML = ''; return; }
+        var periodIdx = parseInt(periodStr);
 
         factor = CLASS_FACTORS_192[cls][periodIdx];
         var periodLabels = [
@@ -1098,10 +1123,10 @@ function updateCert() {
 
     // MAOP_at_point = (minP_at_gauge ± elevation_head) / factor
     var maopGauge = minP / factor;
-    var maopHigh = (HIGH_ELEV !== null && TEST_SITE_ELEV !== null)
-        ? (minP - (HIGH_ELEV - TEST_SITE_ELEV) * HEAD_FACTOR) / factor : null;
-    var maopLow  = (LOW_ELEV !== null && TEST_SITE_ELEV !== null)
-        ? (minP + (TEST_SITE_ELEV - LOW_ELEV) * HEAD_FACTOR) / factor : null;
+    var maopHigh = (HIGH_ELEV !== null && GAUGE_ELEV !== null)
+        ? (minP - (HIGH_ELEV - GAUGE_ELEV) * HEAD_FACTOR) / factor : null;
+    var maopLow  = (LOW_ELEV !== null && GAUGE_ELEV !== null)
+        ? (minP + (GAUGE_ELEV - LOW_ELEV) * HEAD_FACTOR) / factor : null;
 
     var certMAOP = maopHigh !== null ? maopHigh : maopGauge;
 
@@ -1116,8 +1141,8 @@ function updateCert() {
     var certColor = certMAOP < 0 ? '#e74c3c' : '#16a085';
     html += '<span class="param-val" style="color:' + certColor + '; font-size:1.1em;">' + certMAOP.toFixed(0) + ' psig</span></div>';
 
-    if (TEST_SITE_ELEV !== null) {
-        html += '<div class="param-row"><span class="param-label" style="color:#95a5a6;">At Gauge (' + TEST_SITE_ELEV.toFixed(0) + ' ft)</span>';
+    if (GAUGE_ELEV !== null) {
+        html += '<div class="param-row"><span class="param-label" style="color:#95a5a6;">At Gauge (' + GAUGE_ELEV.toFixed(0) + ' ft)</span>';
         html += '<span class="param-val" style="color:#bdc3c7;">' + maopGauge.toFixed(0) + ' psig</span></div>';
     }
     if (maopLow !== null && LOW_ELEV !== null) {
@@ -1267,7 +1292,7 @@ function saveData(silent) {
             readings:     rows,
             test_date:    document.getElementById('test-date').value || null,
             timezone:     getTimezone() || null,
-            install_date: document.getElementById('cert-install-date').value || null,
+            install_period: document.getElementById('cert-install-period').value || null,
             converted:    document.getElementById('cert-converted').checked || null,
             cert_class:   document.getElementById('cert-class').value || null,
             client_id:    CLIENT_ID,
@@ -1326,7 +1351,7 @@ function lockUI() {
     document.getElementById('test-date').disabled = true;
     document.getElementById('test-tz').disabled = true;
     document.getElementById('leak-threshold').disabled = true;
-    document.getElementById('cert-install-date').disabled = true;
+    document.getElementById('cert-install-period').disabled = true;
     document.getElementById('cert-converted').disabled = true;
     document.getElementById('cert-class').disabled = true;
 }
@@ -1422,7 +1447,7 @@ function confirmStartPV() {
 (function init() {
     if (savedTestDate)    document.getElementById('test-date').value = savedTestDate;
     if (savedTimezone)    document.getElementById('test-tz').value = savedTimezone;
-    if (savedInstallDate) document.getElementById('cert-install-date').value = savedInstallDate;
+    if (savedInstallPeriod !== null) document.getElementById('cert-install-period').value = savedInstallPeriod;
     if (savedConverted)   document.getElementById('cert-converted').checked = true;
     if (savedCertClass)   document.getElementById('cert-class').value = savedCertClass;
     if (savedReadings.length) {
@@ -1467,5 +1492,41 @@ function confirmStartPV() {
         </div>
     </div>
 </div>
+
+<script>
+// Portal tooltip — renders outside the overflow container so it's never clipped
+(function() {
+    var portal = document.createElement('div');
+    portal.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;display:none;'
+        + 'background:#111c24;color:#dce6ee;border:1px solid #4a6375;border-radius:5px;'
+        + 'padding:7px 11px;font-size:0.76em;font-weight:400;line-height:1.5;'
+        + 'white-space:normal;width:240px;box-shadow:0 4px 14px rgba(0,0,0,0.5);'
+        + "font-family:'Segoe UI',sans-serif;";
+    document.body.appendChild(portal);
+
+    var timer;
+    document.addEventListener('mouseover', function(e) {
+        var el = e.target.closest ? e.target.closest('.table-scroll [data-tt]') : null;
+        if (!el) return;
+        clearTimeout(timer);
+        timer = setTimeout(function() {
+            portal.textContent = el.getAttribute('data-tt');
+            portal.style.display = 'block';
+            var rect = el.getBoundingClientRect();
+            var x = rect.left + rect.width / 2 - 120;
+            var y = rect.top - portal.offsetHeight - 8;
+            x = Math.max(8, Math.min(x, window.innerWidth - 248));
+            if (y < 8) y = rect.bottom + 8;
+            portal.style.left = x + 'px';
+            portal.style.top  = y + 'px';
+        }, 250);
+    });
+    document.addEventListener('mouseout', function(e) {
+        if (!(e.target.closest ? e.target.closest('.table-scroll [data-tt]') : null)) return;
+        clearTimeout(timer);
+        portal.style.display = 'none';
+    });
+})();
+</script>
 </body>
 </html>

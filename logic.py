@@ -480,93 +480,170 @@ class Section:
         above_mask = self.points['Upper_Bound_P'] > self.points['SMYS_Limit']
         self.smys_bound_violations = self.points[above_mask][['Station', 'Upper_Bound_P', 'SMYS_Limit']].copy() if above_mask.any() else None
         
-        # Cumulative backpressure logic to account for passed highs
-        ascending = params.get('fill_direction') == '1'
-        df_sorted = self.points.sort_values('Station', ascending=ascending).reset_index(drop=True)
-        cum_max_elev = df_sorted['Elevation'].cummax()
-        elev_diff = cum_max_elev - df_sorted['Elevation']
-        req_back_p = elev_diff * app.head_factor
-        df_sorted['Req_Back_P'] = req_back_p
-        self.vent_psi = req_back_p.max()
-        
-        # Apply override for vent_psi if provided
-        override_vent = params.get('override_vent')
-        if override_vent is not None:
-            self.vent_psi = override_vent
-        
         # Validate inside diameter is positive (OD - 2*WT)
         max_wt = self.points['WT'].max()
         if app.od - 2 * max_wt <= 0:
             raise ValueError(f"Pipe inside diameter is zero or negative (OD={app.od}, max WT={max_wt}). Check your OD and wall thickness values.")
 
-        # Calculate cumulative volumes for filled part
-        cum_vol = [0.0]
+        # ── Cumulative volume from start (ascending) ────────────────────────
+        df_sorted = self.points.sort_values('Station').reset_index(drop=True)
+        cum_from_start = [0.0]
         for i in range(len(df_sorted) - 1):
-            dist = abs(df_sorted.loc[i+1, 'Station'] - df_sorted.loc[i, 'Station'])
-            wt_avg = (df_sorted.loc[i, 'WT'] + df_sorted.loc[i+1, 'WT']) / 2
-            id_in = app.od - 2 * wt_avg
-            seg_vol_ft3 = math.pi * (id_in / 24)**2 * dist
-            seg_vol_gal = seg_vol_ft3 * 7.4805
-            cum_vol.append(cum_vol[-1] + seg_vol_gal)
-        total_vol = cum_vol[-1]
-        self.volume_gal = total_vol
-        
-        df_sorted['Cum_Gal'] = cum_vol
-        
-        atm = 14.7
-        v_rem = total_vol - np.array(cum_vol)
-        v_rem[v_rem == 0] = 1e-6
+            dist    = abs(df_sorted.loc[i+1, 'Station'] - df_sorted.loc[i, 'Station'])
+            wt_avg  = (df_sorted.loc[i, 'WT'] + df_sorted.loc[i+1, 'WT']) / 2
+            id_in   = app.od - 2 * wt_avg
+            cum_from_start.append(cum_from_start[-1] + math.pi * (id_in / 24)**2 * dist * 7.4805)
+        total_vol        = cum_from_start[-1]
+        self.volume_gal  = total_vol
+        df_sorted['Cum_From_Start'] = cum_from_start
 
-        if total_vol == 0:
-            self.prepack_psi = 0
-            prepack_profile = [0.0] * len(df_sorted)
-            self.cum_gal_at_vent = 0.0
-            df_sorted['Prepack_Profile'] = prepack_profile
+        # ── Locate fill station ─────────────────────────────────────────────
+        fill_site_val = params.get('fill_site')
+        if fill_site_val is not None:
+            fill_sta  = parse_station(fill_site_val)
+            fill_idx  = int((df_sorted['Station'] - fill_sta).abs().idxmin())
         else:
-            req_abs = req_back_p + atm
-            min_prepack_abs = np.max(req_abs * v_rem / total_vol)
-            self.prepack_psi = min_prepack_abs - atm
-            prepack_abs = self.prepack_psi + atm
-            prepack_profile = []
-            for i in range(len(cum_vol)):
-                v_r = v_rem[i]
-                p_abs = prepack_abs * total_vol / v_r
-                p_gauge = p_abs - atm
-                p_gauge = min(p_gauge, self.vent_psi)
-                prepack_profile.append(p_gauge)
-            df_sorted['Prepack_Profile'] = prepack_profile
-            max_vent = self.vent_psi
-            min_cum_gal = df_sorted.loc[df_sorted['Prepack_Profile'] == max_vent, 'Cum_Gal'].min()
-            self.cum_gal_at_vent = min_cum_gal if not pd.isna(min_cum_gal) else total_vol
-        
-        # Apply override for prepack_psi if provided (after calculation, so it overrides)
+            fill_idx  = 0
+        fill_cum = cum_from_start[fill_idx]
+
+        # Cum_Gal = volume of pipe between fill station and each point
+        df_sorted['Cum_Gal'] = (df_sorted['Cum_From_Start'] - fill_cum).abs()
+
+        # ── Backpressure: one arm in each direction from fill station ───────
+        left  = df_sorted.iloc[:fill_idx + 1].sort_values('Station', ascending=False).reset_index(drop=True)
+        right = df_sorted.iloc[fill_idx:].sort_values('Station', ascending=True).reset_index(drop=True)
+
+        def _arm_bp(arm_df):
+            if arm_df.empty:
+                return pd.Series(dtype=float), 0.0
+            req = (arm_df['Elevation'].cummax() - arm_df['Elevation']) * app.head_factor
+            return req.reset_index(drop=True), float(req.max())
+
+        left_bp,  left_vent  = _arm_bp(left)
+        right_bp, right_vent = _arm_bp(right)
+        self.vent_psi = max(left_vent, right_vent)
+
+        override_vent = params.get('override_vent')
+        if override_vent is not None:
+            self.vent_psi  = override_vent
+            left_vent      = override_vent
+            right_vent     = override_vent
+
+        # Merge per-station backpressure (fill station is shared; take max)
+        bp_df = pd.concat([
+            pd.DataFrame({'Station': left['Station'].values,  'Req_Back_P': left_bp.values}),
+            pd.DataFrame({'Station': right['Station'].values, 'Req_Back_P': right_bp.values}),
+        ]).groupby('Station', as_index=False)['Req_Back_P'].max()
+        df_sorted = df_sorted.merge(bp_df, on='Station', how='left')
+
+        # ── Pre-pack: compute per arm, use the more demanding ───────────────
+        atm = 14.7
+
+        def _arm_prepack(arm_df, arm_bp_series):
+            """Boyle's-Law pre-pack for one arm. Returns (prepack_psi, arm_cum, arm_total)."""
+            if arm_df.empty:
+                return 0.0, [0.0], 0.0
+            arm_cum = [0.0]
+            for i in range(len(arm_df) - 1):
+                dist   = abs(arm_df.loc[i+1, 'Station'] - arm_df.loc[i, 'Station'])
+                wt_avg = (arm_df.loc[i, 'WT'] + arm_df.loc[i+1, 'WT']) / 2
+                id_in  = app.od - 2 * wt_avg
+                arm_cum.append(arm_cum[-1] + math.pi * (id_in / 24)**2 * dist * 7.4805)
+            arm_total = arm_cum[-1]
+            if arm_total == 0:
+                return 0.0, arm_cum, 0.0
+            v_rem         = arm_total - np.array(arm_cum)
+            v_rem[v_rem == 0] = 1e-6
+            req_abs       = arm_bp_series.values + atm
+            prepack_psi   = float(np.max(req_abs * v_rem / arm_total)) - atm
+            return prepack_psi, arm_cum, arm_total
+
+        def _build_profile(arm_df, arm_cum, arm_total, prepack_psi, arm_vent_psi):
+            """Pressure profile and cum_gal_at_vent for one arm."""
+            if arm_total == 0:
+                return [0.0] * len(arm_df), arm_total
+            prepack_abs = prepack_psi + atm
+            v_rem       = arm_total - np.array(arm_cum)
+            v_rem[v_rem == 0] = 1e-6
+            profile = [min(prepack_abs * arm_total / v_r - atm, arm_vent_psi) for v_r in v_rem]
+            at_vent = [arm_cum[i] for i, p in enumerate(profile) if p >= arm_vent_psi]
+            return profile, (min(at_vent) if at_vent else arm_total)
+
+        left_pp,  left_cum,  left_total  = _arm_prepack(left,  left_bp)
+        right_pp, right_cum, right_total = _arm_prepack(right, right_bp)
+        self.prepack_psi = max(left_pp, right_pp)
+
         override_prepack = params.get('override_prepack')
         if override_prepack is not None:
             self.prepack_psi = override_prepack
-            prepack_abs = self.prepack_psi + atm
-            prepack_profile = []
-            for i in range(len(cum_vol)):
-                v_r = v_rem[i]
-                p_abs = prepack_abs * total_vol / v_r
-                p_gauge = p_abs - atm
-                p_gauge = min(p_gauge, self.vent_psi)
-                prepack_profile.append(p_gauge)
-            df_sorted['Prepack_Profile'] = prepack_profile
-            max_vent = self.vent_psi
-            min_cum_gal = df_sorted.loc[df_sorted['Prepack_Profile'] == max_vent, 'Cum_Gal'].min()
-            self.cum_gal_at_vent = min_cum_gal if not pd.isna(min_cum_gal) else total_vol
-        
-        # Map back Req_Back_P to original
+
+        left_profile,  left_at_vent  = _build_profile(left,  left_cum,  left_total,  self.prepack_psi, left_vent)
+        right_profile, right_at_vent = _build_profile(right, right_cum, right_total, self.prepack_psi, right_vent)
+
+        # Per-section vent values (Section 1 = lower stations, Section 2 = upper stations)
+        self.vent_psi_lower = left_vent
+        self.vent_psi_upper = right_vent
+        self.vent_gal_lower = left_at_vent   # gallons into section 1 when its vent opens
+        self.vent_gal_upper = right_at_vent  # gallons into section 2 when its vent opens
+
+        dominant_left         = left_pp >= right_pp
+        self.cum_gal_at_vent  = left_at_vent if dominant_left else right_at_vent
+
+        # Whole-line pre-pack: vent gallons = total pumped into both arms simultaneously
+        if left_total > 0 and right_total > 0:
+            dominant_total_v = left_total if dominant_left else right_total
+            self.vent_gallons_total = self.cum_gal_at_vent * total_vol / dominant_total_v
+        else:
+            self.vent_gallons_total = self.cum_gal_at_vent
+
+        # Arm lengths (ft) for fill schedule display
+        left_len  = float(df_sorted.loc[fill_idx, 'Station'] - df_sorted.loc[0, 'Station'])
+        right_len = float(df_sorted.loc[len(df_sorted) - 1, 'Station'] - df_sorted.loc[fill_idx, 'Station'])
+        self.fill_len_lower = left_len   # lower-station section (start → fill station)
+        self.fill_len_upper = right_len  # upper-station section (fill station → end)
+
+        # ── Sequential fill order ────────────────────────────────────────────
+        fill_sequence = params.get('fill_sequence', 'upper_first')
+        if left_total > 0 and right_total > 0:
+            if fill_sequence == 'lower_first':
+                # Lower-station arm fills first; offset upper-station arm Cum_Gal
+                df_sorted.loc[df_sorted.index > fill_idx, 'Cum_Gal'] += left_total
+                self.fill_vol_first  = left_total
+                self.fill_vol_second = right_total
+                self.fill_len_first  = left_len
+                self.fill_len_second = right_len
+                if not dominant_left:
+                    self.cum_gal_at_vent += left_total
+            else:  # 'upper_first'
+                # Upper-station arm fills first; offset lower-station arm Cum_Gal
+                df_sorted.loc[df_sorted.index < fill_idx, 'Cum_Gal'] += right_total
+                self.fill_vol_first  = right_total
+                self.fill_vol_second = left_total
+                self.fill_len_first  = right_len
+                self.fill_len_second = left_len
+                if dominant_left:
+                    self.cum_gal_at_vent += right_total
+        else:
+            self.fill_vol_first  = total_vol
+            self.fill_vol_second = 0.0
+            self.fill_len_first  = self.length
+            self.fill_len_second = 0.0
+
+        pp_df = pd.concat([
+            pd.DataFrame({'Station': left['Station'].values,  'Prepack_Profile': left_profile}),
+            pd.DataFrame({'Station': right['Station'].values, 'Prepack_Profile': right_profile}),
+        ]).groupby('Station', as_index=False)['Prepack_Profile'].max()
+        df_sorted = df_sorted.merge(pp_df, on='Station', how='left')
+        df_sorted['Prepack_Profile'] = df_sorted['Prepack_Profile'].fillna(0.0)
+
+        # ── Merge computed columns back to self.points ───────────────────────
         self.points = self.points.merge(df_sorted[['Station', 'Req_Back_P']], on='Station', how='left')
-        
-        # Map back to original order
         self.points = self.points.merge(df_sorted[['Station', 'Prepack_Profile', 'Cum_Gal']], on='Station', how='left')
         self.points['Station_Formatted'] = self.points['Station'].apply(station_format)
         self.table_data = self.points
 
         # Add Percent_SMYS
         self.points['Percent_SMYS'] = (self.points['Local_P'] / (2 * app.smys * self.points['WT'] / app.od)) * 100
-        # Sort table data by station so Cum_Gal is monotonically increasing
         self.table_data = self.points.sort_values('Station').reset_index(drop=True)
 
 

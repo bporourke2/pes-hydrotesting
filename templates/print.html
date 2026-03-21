@@ -78,14 +78,20 @@
             <li>Override Vent Threshold psig: {{ 'None' if p.get('override_vent') is none else p.override_vent }}</li>
             <li>Pipe Grade: {{ p.grade }}</li>
             <li>SMYS Threshold (%): {{ p.get('smys_threshold')|int if p.get('smys_threshold') is not none else 104 }}</li>
-            <li>Head Factor: {{ p.get('head_factor') if p.get('head_factor') is not none else 0.433 }} psi/ft</li>
-            <li>Fill Direction: {{ 'From Start' if p.fill_direction == '1' else 'From End' }}</li>
+            <li>Head Factor: {{ p.get('head_factor') if p.get('head_factor') is not none else 0.433 }} psi/ft ({{ 'Seawater' if (p.get('head_factor') or 0)|float == 0.445 else 'Fresh water' }})</li>
+            <li>Fill Station: {{ p.fill_site if p.get('fill_site') is not none else '—' }}</li>
+            <li>Fill Sequence: {{ 'Section 2 first' if p.get('fill_sequence', 'upper_first') == 'upper_first' else 'Section 1 first' }}</li>
         </ul>
         
         <h2>Analysis Results</h2>
         <div class="stats-grid">
             <div class="card"><h4>Pre-pack psig</h4><p>{{ sec.prepack_psi|round(0)|int }} psig</p></div>
-            <div class="card"><h4>Vent Threshold</h4><p>{{ sec.vent_psi|round(0)|int }} psig {% if vent_gallons %} (approx {{ "{:,.0f}".format(vent_gallons) }} gal into filling) {% endif %}</p></div>
+            {% if sec.fill_len_lower > 0 %}
+            <div class="card"><h4>Vent Threshold — Section 1 ({{ "{:,.0f}".format(sec.fill_len_lower) }} ft)</h4><p>{{ sec.vent_psi_lower|round(0)|int }} psig<br><span style="font-size:0.65em; font-weight:normal; color:#7f8c8d;">{% if sec.vent_gal_lower < 1 %}Immediate (pre-pack exceeds section){% else %}approx {{ "{:,.0f}".format(sec.vent_gal_lower) }} gal into section fill{% endif %}</span></p></div>
+            {% endif %}
+            {% if sec.fill_len_upper > 0 %}
+            <div class="card"><h4>Vent Threshold — Section 2 ({{ "{:,.0f}".format(sec.fill_len_upper) }} ft)</h4><p>{{ sec.vent_psi_upper|round(0)|int }} psig<br><span style="font-size:0.65em; font-weight:normal; color:#7f8c8d;">{% if sec.vent_gal_upper < 1 %}Immediate (pre-pack exceeds section){% else %}approx {{ "{:,.0f}".format(sec.vent_gal_upper) }} gal into section fill{% endif %}</span></p></div>
+            {% endif %}
             <div class="card"><h4>Test Window at Test Site</h4><p>{{ sec.gauge_lower|int }} - {{ sec.gauge_upper|int }} psig (Target {{ sec.target_gauge|int }})</p></div>
             <div class="card"><h4>Total Volume</h4><p>{{ "{:,.0f}".format(sec.volume_gal) }} gal</p></div>
             <div class="card"><h4>Section Length</h4><p>{{ "{:,.0f}".format(sec.length) }} ft{% if sec.length > 5280 %} ({{ "{:,.2f}".format(sec.length / 5280) }} mi){% endif %}</p></div>
@@ -95,6 +101,19 @@
             </div>
             {% if fill_time %}
             <div class="card"><h4>Time to Fill</h4><p>{{ fill_time }} (HH:MM)</p></div>
+            {% endif %}
+            {% if fill_time_first %}
+            {% set first_is_lower = p.get('fill_sequence') == 'lower_first' %}
+            <div class="card">
+                <h4>Fill #1 — Section {{ '1' if first_is_lower else '2' }} ({{ "{:,.0f}".format(sec.fill_len_first) }} ft)</h4>
+                <p>{{ fill_time_first }} (HH:MM)</p>
+                <p style="font-size:0.65em; color:#7f8c8d; margin-top:4px;">{{ "{:,.0f}".format(sec.fill_vol_first) }} gal</p>
+            </div>
+            <div class="card">
+                <h4>Fill #2 — Section {{ '2' if first_is_lower else '1' }} ({{ "{:,.0f}".format(sec.fill_len_second) }} ft)</h4>
+                <p>{{ fill_time_second }} (HH:MM)</p>
+                <p style="font-size:0.65em; color:#7f8c8d; margin-top:4px;">{{ "{:,.0f}".format(sec.fill_vol_second) }} gal</p>
+            </div>
             {% endif %}
             {% if dew_time %}
             <div class="card"><h4>Time to Dewater</h4><p>{{ dew_time }} (HH:MM)</p></div>

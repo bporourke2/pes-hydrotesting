@@ -971,7 +971,7 @@ def set_demo():
     session['params'] = {
         'start': 1200495, 'end': 1218848, 'od': 42,
         'min_p': 1850, 'cfm': 12000, 'fill_gpm': 800, 'dewater_gpm': 600,
-        'test_site': 1218848, 'dewater_site': 1218848, 'smys_threshold': 104, 'fill_direction': '1',
+        'test_site': 1218848, 'dewater_site': 1218848, 'fill_site': 1200495, 'smys_threshold': 104,
         'min_excess': 25, 'window_upper': 50, 'grade': 'X70'
     }
     session['file_path'] = DEMO_FILE
@@ -1053,7 +1053,7 @@ def mapping():
                 'fill_gpm': 800,
                 'dewater_gpm': 600,
                 'smys_threshold': 104,
-                'fill_direction': '1',
+
                 'min_excess': 25,
                 'window_upper': 50,
                 'grade': 'X70'
@@ -1084,11 +1084,9 @@ def mapping():
             if 'dewater_site' not in p:
                 p['dewater_site'] = max_sta
 
-            # Pre-populate fill_site as the lowest station (min_sta), but respect fill_direction
-            if p['fill_direction'] == '1':
-                p['fill_site'] = min(p['start'], p['end'])  # Lowest assuming start < end, but general
-            else:
-                p['fill_site'] = max(p['start'], p['end'])
+            # Pre-populate fill_site to the start of the section if not already set
+            if 'fill_site' not in p:
+                p['fill_site'] = p['start']
 
             session['params'] = p
 
@@ -1182,7 +1180,7 @@ def results():
 
     if request.method == 'POST':
         form_dict = request.form.to_dict()
-        for key in ['start', 'end', 'test_site', 'dewater_site']:
+        for key in ['start', 'end', 'test_site', 'dewater_site', 'fill_site']:
             if key in form_dict:
                 value = form_dict[key]
                 if value and value != 'None':
@@ -1201,7 +1199,7 @@ def results():
                 form_dict['od'] = od_val
 
         # Handle numeric fields to convert strings to floats, fallback if invalid or empty
-        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'override_gauge_lower', 'smys_threshold', 'unrestrained_length', 'head_factor']
+        numeric_keys = ['fill_gpm', 'dewater_gpm', 'cfm', 'min_p', 'min_excess', 'window_upper', 'override_prepack', 'override_vent', 'override_gauge_lower', 'smys_threshold', 'unrestrained_length', 'head_factor', 'gauge_elevation']
         for key in numeric_keys:
             if key in form_dict:
                 value = form_dict[key].strip() if form_dict[key] else ''
@@ -1211,7 +1209,7 @@ def results():
                     except ValueError:
                         form_dict[key] = p.get(key)  # Fallback to previous if invalid
                 else:
-                    if key in ['override_prepack', 'override_vent', 'override_gauge_lower', 'unrestrained_length']:
+                    if key in ['override_prepack', 'override_vent', 'override_gauge_lower', 'unrestrained_length', 'gauge_elevation']:
                         form_dict[key] = None  # Clear to default when blank
                     else:
                         form_dict[key] = p.get(key)  # Keep previous if empty for non-overrides
@@ -1222,29 +1220,13 @@ def results():
             if val is not None and isinstance(val, (int, float)) and val < 0:
                 form_dict[key] = p.get(key)
 
-        # Auto-set fill_site based on direction (overrides pre-populated value)
-        if 'fill_direction' in form_dict:
-            s = form_dict.get('start', p.get('start'))
-            e = form_dict.get('end', p.get('end'))
-            if s is not None and e is not None:
-                if form_dict['fill_direction'] == '1':
-                    form_dict['fill_site'] = min(s, e)
-                else:
-                    form_dict['fill_site'] = max(s, e)
-            elif form_dict['fill_direction'] == '1':
-                form_dict['fill_site'] = s
-            else:
-                form_dict['fill_site'] = e
         p.update(form_dict)
         session['params'] = p
 
-    # Always ensure fill_site is set (for GET or if missing after POST)
-    if 'fill_site' not in p and 'fill_direction' in p and 'start' in p and 'end' in p:
-        if p['fill_direction'] == '1':
-            p['fill_site'] = min(p['start'], p['end'])
-        else:
-            p['fill_site'] = max(p['start'], p['end'])
-        session['params'] = p  # Persist the update
+    # Always ensure fill_site is set
+    if 'fill_site' not in p and 'start' in p:
+        p['fill_site'] = p['start']
+        session['params'] = p
 
     # Infer NPS from OD for sessions saved before NPS was added
     if 'nps' not in p and 'od' in p:
@@ -1279,7 +1261,7 @@ def results():
         prepack_time = f"{prepack_minutes // 60}:{prepack_minutes % 60:02d}" if prepack_minutes is not None else None
 
         # Calculate vent_gallons
-        vent_gallons = sec.cum_gal_at_vent if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
+        vent_gallons = (sec.vent_gallons_total if hasattr(sec, 'vent_gallons_total') else sec.cum_gal_at_vent) if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
 
         max_smys_row = sec.table_data.loc[sec.table_data['Percent_SMYS'].idxmax()]
         max_smys_pct = max_smys_row['Percent_SMYS']
@@ -1290,6 +1272,13 @@ def results():
         fill_time = f"{fill_minutes // 60}:{fill_minutes % 60:02d}" if fill_minutes is not None else None
         dewater_minutes = math.ceil(sec.volume_gal / float(p['dewater_gpm'])) if p.get('dewater_gpm') and float(p['dewater_gpm']) > 0 else None
         dewater_time = f"{dewater_minutes // 60}:{dewater_minutes % 60:02d}" if dewater_minutes is not None else None
+        fill_time_first = fill_time_second = None
+        if hasattr(sec, 'fill_vol_second') and sec.fill_vol_second > 0 and p.get('fill_gpm') and float(p['fill_gpm']) > 0:
+            gpm = float(p['fill_gpm'])
+            m1 = math.ceil(sec.fill_vol_first / gpm)
+            m2 = math.ceil(sec.fill_vol_second / gpm)
+            fill_time_first  = f"{m1 // 60}:{m1 % 60:02d}"
+            fill_time_second = f"{m2 // 60}:{m2 % 60:02d}"
 
         portfolios = load_portfolios()
         save_id = session.get('save_id')
@@ -1333,7 +1322,7 @@ def results():
                 socketio.emit('results_updated', {'save_id': save_id}, room=f'results_{save_id}')
             except Exception:
                 pass
-        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
+        return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, fill_time_first=fill_time_first, fill_time_second=fill_time_second, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
     except ValueError as ve:
         from markupsafe import escape
         return f"Input Error: {escape(str(ve))} (Check station formats or numeric values)", 400
@@ -1548,7 +1537,7 @@ def print_view():
         prepack_minutes = math.ceil(added_ft3 / float(p['cfm'])) if p.get('cfm') and float(p['cfm']) > 0 else None
         prepack_time = f"{prepack_minutes // 60}:{prepack_minutes % 60:02d}" if prepack_minutes is not None else None
 
-        vent_gallons = sec.cum_gal_at_vent if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
+        vent_gallons = (sec.vent_gallons_total if hasattr(sec, 'vent_gallons_total') else sec.cum_gal_at_vent) if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
 
         max_smys_row = sec.table_data.loc[sec.table_data['Percent_SMYS'].idxmax()]
         max_smys_pct = max_smys_row['Percent_SMYS']
@@ -1559,10 +1548,17 @@ def print_view():
         fill_time = f"{fill_minutes // 60}:{fill_minutes % 60:02d}" if fill_minutes is not None else None
         dewater_minutes = math.ceil(sec.volume_gal / float(p['dewater_gpm'])) if p.get('dewater_gpm') and float(p['dewater_gpm']) > 0 else None
         dewater_time = f"{dewater_minutes // 60}:{dewater_minutes % 60:02d}" if dewater_minutes is not None else None
+        fill_time_first = fill_time_second = None
+        if hasattr(sec, 'fill_vol_second') and sec.fill_vol_second > 0 and p.get('fill_gpm') and float(p['fill_gpm']) > 0:
+            gpm = float(p['fill_gpm'])
+            m1 = math.ceil(sec.fill_vol_first / gpm)
+            m2 = math.ceil(sec.fill_vol_second / gpm)
+            fill_time_first  = f"{m1 // 60}:{m1 % 60:02d}"
+            fill_time_second = f"{m2 // 60}:{m2 % 60:02d}"
 
         min_bound_violations = sec.min_bound_violations
         smys_bound_violations = sec.smys_bound_violations
-        return render_template('print.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, paper_size=paper_size, orientation=orientation, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations, pi=session.get('project_info', {}))
+        return render_template('print.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, fill_time_first=fill_time_first, fill_time_second=fill_time_second, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, paper_size=paper_size, orientation=orientation, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations, pi=session.get('project_info', {}))
     except Exception as e:
         app.logger.exception("Print view error")
         return "Error generating print view. Check your inputs and try again.", 500
@@ -1700,6 +1696,7 @@ def test_execution(save_id):
         low_elev  = round(float(pts['Elevation'].min()), 1)
     except Exception:
         pass
+    gauge_elev = float(p['gauge_elevation']) if p.get('gauge_elevation') is not None else test_site_elev
     portfolios = load_portfolios()
     pf_name = next((pf['name'] for pf in portfolios if pf['id'] == data.get('portfolio_id')), None)
     td = data.get('test_data', {})
@@ -1719,6 +1716,7 @@ def test_execution(save_id):
         test_status=td.get('status'),
         test_attempt=test_attempt,
         test_site_elev=test_site_elev,
+        gauge_elev=gauge_elev,
         high_elev=high_elev,
         low_elev=low_elev,
         governing_code=data.get('project_info', {}).get('governing_code', ''),
