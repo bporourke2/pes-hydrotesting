@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hydrotest Engineering Analysis</title>
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
     <style>
+        * { box-sizing: border-box; }
         :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #f4f7f6; }
-        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); color: var(--text-light); padding: 0; height: 100vh; position: fixed; overflow-y: scroll; box-sizing: border-box; }
+        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); color: var(--text-light); padding: 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: scroll; box-sizing: border-box; }
         .sidebar input, .sidebar textarea { width: 100%; padding: 8px; margin: 8px 0; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; font-family: inherit; }
         .sidebar textarea { resize: vertical; min-height: 80px; }
         .sidebar select { width: 100%; padding: 8px; margin: 8px 0; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; }
@@ -17,7 +19,7 @@
         .tab-bar button.active { color: var(--text-light); border-bottom-color: var(--accent-green); }
         .tab-bar button:hover { color: var(--text-light); }
         .tab-content { padding: 20px 25px 25px; }
-        .content { margin-left: calc(var(--sidebar-width) + 20px); padding: 40px; width: 100%; }
+        .content { margin-left: calc(var(--sidebar-width) + 20px); padding: 40px; flex: 1; min-width: 0; }
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
         .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 4px solid var(--accent-green); }
         .card h4 { margin: 0; color: #7f8c8d; font-size: 0.75em; text-transform: uppercase; }
@@ -37,6 +39,32 @@
         .doc-meta { background: #34495e; border-radius: 6px; padding: 12px; margin-bottom: 15px; font-size: 0.82em; color: #bdc3c7; }
         .doc-meta span { display: block; margin-bottom: 4px; }
         .saves-list a:hover { background: #3d566e !important; }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        .menu-toggle {
+            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
+            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
+            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
+            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
+        }
+        .sidebar-backdrop.active { display: block; }
+
+        @media (max-width: 1100px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 900px) {
+            .menu-toggle { display: block; }
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; position: fixed; }
+            .sidebar.open { transform: translateX(0); }
+            .content { margin-left: 0 !important; padding: 20px; padding-top: 58px; }
+        }
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .content { padding: 12px; padding-top: 54px; }
+        }
     </style>
     <script>
         {% if save_error %}
@@ -45,6 +73,15 @@
             if (btn) showTab('document', btn);
         });
         {% endif %}
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('open');
+            document.querySelector('.sidebar-backdrop').classList.toggle('active');
+        }
+        function closeSidebar() {
+            document.querySelector('.sidebar').classList.remove('open');
+            document.querySelector('.sidebar-backdrop').classList.remove('active');
+        }
+
         function formatStation(input) {
             let val = parseFloat(input.value.replace(/[+]/g, ''));
             if (!isNaN(val)) {
@@ -63,6 +100,9 @@
     </script>
 </head>
 <body>
+<button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
+<div class="sidebar-backdrop" onclick="closeSidebar()"></div>
+
     <div class="sidebar">
         <div class="tab-bar">
             <button class="active" onclick="showTab('controls', this)">Controls</button>

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Equipment Setup — {{ save_name }}</title>
     <style>
         :root { --sidebar-width: 260px; --primary-bg: #2c3e50; --accent: #16a085; --text-light: #ecf0f1; }
@@ -61,9 +62,42 @@
         .sta-cell { width: 110px; }
         .date-cell { width: 130px; }
         .skip-cell { width: 54px; }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        .menu-toggle {
+            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
+            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
+            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
+            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
+        }
+        .sidebar-backdrop.active { display: block; }
+
+        @media (max-width: 900px) {
+            .menu-toggle { display: block; }
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
+            .instrument-table th, .instrument-table td { padding: 5px 6px; font-size: 0.8em; }
+        }
+
+        @media (max-width: 600px) {
+            .main { padding: 10px; padding-top: 54px; }
+            .date-cell { width: 100px; }
+            .acc-cell { width: 110px; }
+            .sta-cell { width: 88px; }
+            .instrument-table input[type="text"],
+            .instrument-table input[type="date"],
+            .instrument-table input[type="number"] { padding: 7px 6px; min-height: 36px; }
+        }
     </style>
 </head>
 <body>
+
+<button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
+<div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -84,6 +118,7 @@
     <p class="subtitle">Enter serial numbers, calibration dates, and accuracy for all instruments used during testing. Secondary instruments refer to a second unit deployed at a remote station.</p>
 
     <form id="eq-form" method="POST">
+    <div style="overflow-x: auto;">
     <table class="instrument-table">
         <thead>
             <tr>
@@ -155,10 +190,20 @@
         {% endfor %}
         </tbody>
     </table>
+    </div>
     </form>
 </div>
 
 <script>
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.sidebar-backdrop').classList.toggle('active');
+}
+function closeSidebar() {
+    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.sidebar-backdrop').classList.remove('active');
+}
+
 function toggleSkip(checkbox, prefix) {
     var row = checkbox.closest('tr');
     row.querySelectorAll('input[type="text"], input[type="date"], input[type="number"]').forEach(function(inp) {
