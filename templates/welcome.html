@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hydrotest Planning Tool</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -61,10 +62,24 @@
         .version-badge { display: inline-block; background: #eaf3fb; color: #2980b9; font-size: 0.75em; font-weight: 700; padding: 1px 7px; border-radius: 8px; }
         .action-btns { display: flex; gap: 6px; }
         .no-saves { color: #7f8c8d; font-style: italic; padding: 16px 14px; background: white; font-size: 0.9em; }
+
+        @media (max-width: 700px) {
+            body { padding: 20px 12px; }
+            .options { flex-wrap: wrap; gap: 16px; }
+            .option-card { min-width: 0; }
+            .saves-table th:nth-child(3), .saves-table td:nth-child(3),
+            .saves-table th:nth-child(4), .saves-table td:nth-child(4),
+            .saves-table th:nth-child(5), .saves-table td:nth-child(5) { display: none; }
+            .action-btns { flex-direction: column; gap: 4px; }
+        }
+        @media (max-width: 480px) {
+            body { padding: 12px 8px; padding-top: 50px; }
+            .saves-table th:nth-child(2), .saves-table td:nth-child(2) { display: none; }
+        }
     </style>
 </head>
 <body>
-    <div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div style="position:fixed; top:10px; right:10px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08); max-width:calc(100vw - 20px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
         {{ session.user.name or session.user.email }}
         {% if user_is_admin %}&nbsp;·&nbsp;
         <a href="/settings" style="color:#8e44ad; text-decoration:none; font-weight:600;">Settings</a>{% endif %}
@@ -119,6 +134,7 @@
                 <div style="background:#f8f9fa; padding:6px 18px 6px 44px; font-size:0.77em; text-transform:uppercase; color:#7f8c8d; font-weight:700; letter-spacing:0.4px; border-left:4px solid #95a5a6; border-bottom:1px solid #eee;">
                     &#128279; {{ spread.name }}
                 </div>
+                <div style="overflow-x:auto;">
                 <table class="saves-table">
                     <thead><tr>
                         <th class="indent">Test Segment</th>
@@ -157,6 +173,7 @@
                     {% endfor %}
                     </tbody>
                 </table>
+                </div>
                 {% endfor %}
             </div>
             {% endfor %}

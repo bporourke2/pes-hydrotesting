@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PV Plot — {{ save_name }}</title>
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -66,9 +67,36 @@
         td.del-cell button:hover { color: #e74c3c; background: rgba(231,76,60,0.1); }
         .add-row-btn { margin-top: 10px; padding: 7px 16px; background: #2c3e50; color: #bdc3c7; border: 1px dashed #455a64; border-radius: 4px; cursor: pointer; font-size: 0.85em; width: 100%; }
         .add-row-btn:hover { background: #34495e; color: white; }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        .menu-toggle {
+            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
+            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
+            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
+            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
+        }
+        .sidebar-backdrop.active { display: block; }
+
+        @media (max-width: 900px) {
+            .menu-toggle { display: block; }
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
+            .chart-container { position: relative; top: auto; height: 40vh; }
+        }
+        @media (max-width: 600px) {
+            .main { padding: 10px; padding-top: 54px; }
+            .chart-container { height: 35vh; }
+        }
     </style>
 </head>
 <body>
+
+<button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
+<div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
 <div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#95a5a6; z-index:200; background:rgba(22,33,62,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">
     {{ session.user.name or session.user.email }}
@@ -664,6 +692,15 @@ document.addEventListener('DOMContentLoaded', () => {
     updateGalPerStroke();
     updateChart();
 });
+
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.sidebar-backdrop').classList.toggle('active');
+}
+function closeSidebar() {
+    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.sidebar-backdrop').classList.remove('active');
+}
 </script>
 </body>
 </html>

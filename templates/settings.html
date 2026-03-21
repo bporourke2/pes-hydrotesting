@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Settings — Hydrotest Tool</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,11 +39,12 @@
         .edit-form input:focus, .edit-form select:focus { outline:none; border-color:#2980b9; }
         .btn-edit { background:none; border:none; color:#bdc3c7; cursor:pointer; font-size:0.85em; padding:2px 6px; }
         .btn-edit:hover { color:#2980b9; }
+        @media (max-width: 600px) { body { padding: 20px 12px; padding-top: 50px; } }
     </style>
 </head>
 <body>
 
-<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+<div style="position:fixed; top:10px; right:10px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08); max-width:calc(100vw - 20px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
     {{ session.user.name or session.user.email }}
     &nbsp;·&nbsp;
     <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Rupture Analysis — {{ save_name }}</title>
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/tooltips.js" defer></script>
@@ -110,9 +111,36 @@
         .empty-state { text-align: center; padding: 80px 20px; color: #455a64; }
         .empty-state svg { width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.4; }
         .empty-state p { font-size: 0.9em; }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        .menu-toggle {
+            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
+            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
+            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
+            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
+        }
+        .sidebar-backdrop.active { display: block; }
+
+        @media (max-width: 900px) {
+            .menu-toggle { display: block; }
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
+            .results-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+            .main { padding: 10px; padding-top: 54px; }
+            #rupture-chart { height: 260px; }
+        }
     </style>
 </head>
 <body>
+
+<button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
+<div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
 <div class="sidebar">
     <div class="sidebar-header">
@@ -858,6 +886,15 @@
         });
     });
 })();
+
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.sidebar-backdrop').classList.toggle('active');
+}
+function closeSidebar() {
+    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.sidebar-backdrop').classList.remove('active');
+}
 </script>
 
 </body>
