@@ -4,23 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign In — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
-        .logo { max-width: 180px; margin-bottom: 24px; }
-        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
-        .subtitle { color: #7f8c8d; margin-bottom: 32px; font-size: 0.95em; }
+        body { justify-content: center; }
         .providers { width: 100%; max-width: 400px; }
-        .provider-btn { display: block; width: 100%; padding: 14px 20px; margin-bottom: 12px; background: white; border: 1px solid #ddd; border-radius: 8px; font-size: 1em; font-weight: 600; color: #2c3e50; cursor: pointer; text-decoration: none; text-align: center; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .provider-btn:hover { border-color: #27ae60; box-shadow: 0 2px 8px rgba(39,174,96,0.15); }
-        .provider-btn .type-tag { font-size: 0.72em; color: #95a5a6; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; }
+        .provider-btn { display: block; width: 100%; padding: 14px 20px; margin-bottom: 12px; background: white; border: 1px solid var(--lt-border); border-radius: var(--radius-lg); font-size: 1em; font-weight: 600; color: var(--lt-text-primary); cursor: pointer; text-align: center; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .provider-btn:hover { border-color: var(--color-green-600); box-shadow: 0 2px 8px rgba(39,174,96,0.15); }
+        .provider-btn .type-tag { font-size: 0.72em; color: var(--lt-text-muted); font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; }
     </style>
 </head>
-<body>
+<body class="page-light">
 
-<img src="/static/peslogo.png" alt="PES Logo" class="logo">
-<h1>Sign In</h1>
-<p class="subtitle">Choose an authentication provider</p>
+<img src="/static/peslogo.png" alt="PES Logo" class="page-logo">
+<h1 class="page-title">Sign In</h1>
+<p class="page-subtitle">Choose an authentication provider</p>
 
 <div class="providers">
     {% for p in providers %}

@@ -6,33 +6,33 @@
     <title>PV Plot — {{ save_name }}</title>
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root { --sidebar-width: 380px; --primary-bg: #2c3e50; --accent: #8e44ad; --accent-green: #27ae60; --text-light: #ecf0f1; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+        :root { --dk-sidebar-width: 380px; --dk-accent: #8e44ad; }
+        body { margin: 0; display: flex; background: #1a1a2e; color: var(--dk-text-primary); min-height: 100vh; }
 
         /* Sidebar */
-        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
-        .sidebar-header .logo-link img { max-width: 110px; display: block; }
-        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
-        .sidebar-header a:hover { color: white; }
-        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
-        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
-        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; }
+        .dk-sidebar { width: var(--dk-sidebar-width); background: var(--dk-sidebar-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .dk-sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+        .dk-sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .dk-sidebar-header .logo-link img { max-width: 110px; display: block; }
+        .dk-sidebar-header a { color: var(--dk-text-muted); text-decoration: none; font-size: 0.8em; }
+        .dk-sidebar-header a:hover { color: white; }
+        .dk-sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .dk-sidebar-header p { margin: 0; font-size: 0.78em; color: var(--dk-text-muted); }
+        .dk-sidebar-section { padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+        .dk-sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dk-text-muted); }
         label { display: block; font-size: 0.82em; color: #bdc3c7; margin-bottom: 3px; margin-top: 8px; }
         label:first-child { margin-top: 0; }
         input[type="number"], input[type="text"], select {
-            width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64;
+            width: 100%; padding: 7px 9px; background: var(--dk-input-bg); border: 1px solid var(--dk-border);
             color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit;
         }
-        input[type="number"]:focus, input[type="text"]:focus { outline: none; border-color: var(--accent); }
+        input[type="number"]:focus, input[type="text"]:focus { outline: none; border-color: var(--dk-accent); }
         .computed-val { background: #1a252f; border: 1px solid #34495e; border-radius: 4px; padding: 7px 10px; font-size: 0.88em; color: #27ae60; font-weight: 600; margin-top: 4px; }
         .btn { display: block; width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; }
-        .btn-primary { background: var(--accent); color: white; }
-        .btn-green { background: var(--accent-green); color: white; }
+        .btn-primary { background: var(--dk-accent); color: white; }
+        .btn-green { background: var(--color-green-600); color: white; }
         .btn-danger { background: #c0392b; color: white; }
         .btn:hover { opacity: 0.88; }
         .save-status { font-size: 0.78em; text-align: center; margin-top: 6px; height: 16px; }
@@ -40,7 +40,7 @@
         .save-status.err { color: #e74c3c; }
 
         /* Main content */
-        .main { margin-left: var(--sidebar-width); flex: 1; display: flex; flex-direction: column; padding: 24px; gap: 20px; }
+        .dk-main { margin-left: var(--dk-sidebar-width); flex: 1; display: flex; flex-direction: column; padding: 24px; gap: 20px; }
         .chart-container { background: #16213e; border-radius: 8px; padding: 20px; height: 50vh; max-height: 50vh; display: flex; flex-direction: column; position: sticky; top: 24px; z-index: 10; }
         .chart-container canvas { flex: 1; min-height: 0; width: 100% !important; }
         .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
@@ -60,7 +60,7 @@
         th { background: #1a252f; padding: 8px 10px; text-align: left; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.5px; color: #95a5a6; border-bottom: 1px solid #2c3e50; }
         td { padding: 4px 6px; border-bottom: 1px solid #1a252f; }
         td input { width: 100%; padding: 6px 8px; background: #0d1b2a; border: 1px solid #2c3e50; color: white; border-radius: 3px; font-size: 0.88em; font-family: inherit; }
-        td input:focus { outline: none; border-color: var(--accent); background: #0a1520; }
+        td input:focus { outline: none; border-color: var(--dk-accent); background: #0a1520; }
         td.gal-cell { color: #27ae60; font-size: 0.88em; padding-left: 10px; font-family: monospace; }
         td.del-cell { width: 36px; text-align: center; }
         td.del-cell button { background: none; border: none; color: #7f8c8d; cursor: pointer; font-size: 1.1em; padding: 4px 6px; border-radius: 3px; }
@@ -69,26 +69,13 @@
         .add-row-btn:hover { background: #34495e; color: white; }
 
         /* ── Responsive ──────────────────────────────────────────────────── */
-        .menu-toggle {
-            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
-            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
-            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
-            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-        }
-        .sidebar-backdrop {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
-        }
-        .sidebar-backdrop.active { display: block; }
 
         @media (max-width: 1024px), (pointer: coarse) {
-            .menu-toggle { display: block; }
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
+            .dk-main { margin-left: 0; padding: 16px; padding-top: 58px; }
             .chart-container { position: relative; top: auto; height: 40vh; }
         }
         @media (max-width: 600px) {
-            .main { padding: 10px; padding-top: 54px; }
+            .dk-main { padding: 10px; padding-top: 54px; }
             .chart-container { height: 35vh; }
         }
     </style>
@@ -98,16 +85,16 @@
 <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
 <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
-<div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#95a5a6; z-index:200; background:rgba(22,33,62,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);">
+<div class="user-chip user-chip--dark">
     {{ session.user.name or session.user.email }}
     {% if user_is_admin %}&nbsp;·&nbsp;
-    <a href="/settings" style="color:#8e44ad; text-decoration:none; font-weight:600;">Settings</a>{% endif %}
+    <a href="/settings" class="link-settings-teal">Settings</a>{% endif %}
     &nbsp;·&nbsp;
-    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+    <a href="/logout" class="link-signout">Sign out</a>
 </div>
 
-<div class="sidebar">
-    <div class="sidebar-header">
+<div class="dk-sidebar">
+    <div class="dk-sidebar-header">
         <a href="/" class="logo-link"><img src="/static/peslogo.png" alt="PES"></a>
         {% if from_exec %}<a href="/test/{{ save_id }}">&#8592; Return to Execution</a>
         {% else %}<a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>{% endif %}
@@ -116,7 +103,7 @@
     </div>
 
     <!-- Pump Setup -->
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Pump Setup</h3>
         <label><span class="tt" data-tt="Number of active pump cylinders — directly multiplies the swept volume per stroke">Number of Pistons</span></label>
         <input type="number" id="pistons" min="1" max="6" step="1" value="{{ pv_data.pump.pistons if pv_data.pump else 3 }}" oninput="updateGalPerStroke()">
@@ -129,7 +116,7 @@
     </div>
 
     <!-- Theoretical Slope Inputs -->
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3><span class="tt" data-tt="Expected pressure rise per gallon of water pumped — calculated from pipe compressibility, wall thickness, restrained vs. unrestrained footage, and pipe diameter">Theoretical Slope</span></h3>
         <label><span class="tt" data-tt="Length-weighted average pipe wall thickness across the segment — from the survey data">Avg. Wall Thickness (in)</span> <span style="color:#7f8c8d; font-size:0.85em;">— length-weighted from data</span></label>
         <div class="computed-val">{{ avg_wt if avg_wt else '—' }}</div>
@@ -154,7 +141,7 @@
     </div>
 
     <!-- Actions -->
-    <div class="sidebar-section" style="border-bottom:none; margin-top:auto;">
+    <div class="dk-sidebar-section" style="border-bottom:none; margin-top:auto;">
         <button class="btn btn-green" onclick="saveData()" style="margin-bottom:6px;">Save PV Data</button>
         <div class="save-status" id="save_status"></div>
         {% if from_exec %}
@@ -164,7 +151,7 @@
     </div>
 </div>
 
-<div class="main">
+<div class="dk-main">
     <!-- Chart -->
     <div class="chart-container">
         <div class="chart-header">
@@ -694,11 +681,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function toggleSidebar() {
-    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.dk-sidebar').classList.toggle('open');
     document.querySelector('.sidebar-backdrop').classList.toggle('active');
 }
 function closeSidebar() {
-    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.dk-sidebar').classList.remove('open');
     document.querySelector('.sidebar-backdrop').classList.remove('active');
 }
 </script>

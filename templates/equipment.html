@@ -4,87 +4,59 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Equipment Setup — {{ save_name }}</title>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root { --sidebar-width: 260px; --primary-bg: #2c3e50; --accent: #16a085; --text-light: #ecf0f1; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+        :root { --dk-sidebar-width: 260px; --dk-accent: #16a085; }
+        body { display: flex; background: var(--dk-page-bg); color: var(--dk-text-primary); min-height: 100vh; }
 
-        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
-        .sidebar-header .logo-link img { max-width: 110px; display: block; }
-        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
-        .sidebar-header a:hover { color: white; }
-        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
-        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
-        .sidebar-footer { padding: 20px; margin-top: auto; border-top: 1px solid #455a64; }
-        .btn { display: block; width: 100%; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; font-family: inherit; text-decoration: none; }
-        .btn-accent { background: var(--accent); color: white; }
-        .btn-skip { background: #455a64; color: #bdc3c7; margin-top: 8px; }
-        .btn:hover { opacity: 0.88; }
-        .hint { font-size: 0.75em; color: #7f8c8d; margin-top: 6px; text-align: center; }
+        .hint { font-size: 0.75em; color: var(--dk-text-muted); margin-top: 6px; text-align: center; }
 
-        .main { margin-left: var(--sidebar-width); flex: 1; padding: 28px 32px; }
-        .main h1 { font-size: 1.25em; margin: 0 0 6px; font-weight: 700; }
-        .main .subtitle { color: #7f8c8d; font-size: 0.85em; margin: 0 0 24px; }
+        .dk-main { margin-left: var(--dk-sidebar-width); flex: 1; padding: 28px 32px; }
+        .dk-main h1 { font-size: 1.25em; margin: 0 0 6px; font-weight: 700; }
+        .dk-main .subtitle { color: var(--dk-text-muted); font-size: 0.85em; margin: 0 0 24px; }
 
         /* Instrument grid */
         .instrument-table { width: 100%; border-collapse: collapse; }
         .instrument-table th {
-            background: #16213e; color: #7f8c8d; font-size: 0.72em; text-transform: uppercase;
+            background: var(--dk-panel-bg); color: var(--dk-text-muted); font-size: 0.72em; text-transform: uppercase;
             letter-spacing: 0.6px; padding: 8px 10px; text-align: left; border-bottom: 2px solid #2a3a5a;
         }
         .instrument-table th.center { text-align: center; }
         .instrument-table td { padding: 6px 8px; border-bottom: 1px solid #1e2d45; vertical-align: middle; }
-        .instrument-table tr.primary-row td { background: #16213e; }
-        .instrument-table tr.secondary-row td { background: #111827; }
-        .instrument-table tr.secondary-row td.type-cell { padding-left: 22px; color: #7f8c8d; font-size: 0.85em; }
-        .instrument-table tr.primary-row td.type-cell { font-weight: 600; color: #ecf0f1; }
-        .divider-row td { padding: 4px 0; background: #1a1a2e !important; border: none; }
+        .instrument-table tr.primary-row td { background: var(--dk-panel-bg); }
+        .instrument-table tr.secondary-row td { background: var(--dk-input-deep); }
+        .instrument-table tr.secondary-row td.type-cell { padding-left: 22px; color: var(--dk-text-muted); font-size: 0.85em; }
+        .instrument-table tr.primary-row td.type-cell { font-weight: 600; color: var(--dk-text-primary); }
+        .divider-row td { padding: 4px 0; background: var(--dk-page-bg) !important; border: none; }
 
         .instrument-table input[type="text"],
         .instrument-table input[type="date"],
         .instrument-table input[type="number"] {
-            width: 100%; padding: 5px 8px; background: #2c3e50; border: 1px solid #455a64;
-            color: white; border-radius: 4px; font-size: 0.84em; font-family: inherit;
+            width: 100%; padding: 5px 8px; background: var(--dk-input-bg);
+            border: 1px solid var(--dk-border); color: white;
+            border-radius: var(--radius-sm); font-size: 0.84em; font-family: var(--font-family);
         }
-        .instrument-table input:focus { outline: none; border-color: var(--accent); }
+        .instrument-table input:focus { outline: none; border-color: var(--dk-accent); }
         .instrument-table input.skipped { opacity: 0.35; pointer-events: none; }
 
-        .skip-wrap { display: flex; justify-content: center; align-items: center; gap: 0; }
-        .skip-wrap input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+        .skip-wrap { display: flex; justify-content: center; align-items: center; }
+        .skip-wrap input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--dk-accent); }
 
         .acc-cell { width: 140px; }
         .acc-wrap { display: flex; gap: 4px; }
         .acc-wrap input { flex: 1; min-width: 0; }
-        .acc-wrap select { width: 52px; padding: 5px 4px; background: #2c3e50; border: 1px solid #455a64; color: #bdc3c7; border-radius: 4px; font-size: 0.82em; font-family: inherit; cursor: pointer; }
-        .acc-wrap select:focus { outline: none; border-color: var(--accent); }
+        .acc-wrap select { width: 52px; padding: 5px 4px; background: var(--dk-input-bg); border: 1px solid var(--dk-border); color: var(--dk-text-dim); border-radius: var(--radius-sm); font-size: 0.82em; font-family: var(--font-family); cursor: pointer; }
+        .acc-wrap select:focus { outline: none; border-color: var(--dk-accent); }
         .sta-cell { width: 110px; }
         .date-cell { width: 130px; }
         .skip-cell { width: 54px; }
 
-        /* ── Responsive ──────────────────────────────────────────────────── */
-        .menu-toggle {
-            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
-            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
-            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
-            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-        }
-        .sidebar-backdrop {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
-        }
-        .sidebar-backdrop.active { display: block; }
-
         @media (max-width: 1024px), (pointer: coarse) {
-            .menu-toggle { display: block; }
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
+            .dk-main { padding: 16px; padding-top: 58px; }
             .instrument-table th, .instrument-table td { padding: 5px 6px; font-size: 0.8em; }
         }
-
         @media (max-width: 600px) {
-            .main { padding: 10px; padding-top: 54px; }
+            .dk-main { padding: 10px; padding-top: 54px; }
             .date-cell { width: 100px; }
             .acc-cell { width: 110px; }
             .sta-cell { width: 88px; }
@@ -99,21 +71,21 @@
 <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
 <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
-<div class="sidebar">
-    <div class="sidebar-header">
+<div class="dk-sidebar">
+    <div class="dk-sidebar-header">
         <a class="logo-link" href="/"><img src="/static/peslogo.png" alt="PES"></a>
         <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
         <h2>Equipment Setup</h2>
         <p>{{ save_name }}{% if portfolio_name %} &nbsp;·&nbsp; {{ portfolio_name }}{% endif %}</p>
     </div>
-    <div class="sidebar-footer">
-        <button form="eq-form" type="submit" class="btn btn-accent">Save &amp; Continue to Test &#8594;</button>
-        <a href="/test/{{ save_id }}" class="btn btn-skip">Skip &#8594;</a>
+    <div class="dk-sidebar-footer">
+        <button form="eq-form" type="submit" class="btn btn--full btn--teal">Save &amp; Continue to Test &#8594;</button>
+        <a href="/test/{{ save_id }}" class="btn btn--full btn--muted" style="margin-top:8px;">Skip &#8594;</a>
         <p class="hint">Equipment data is saved with the project and not required to proceed.</p>
     </div>
 </div>
 
-<div class="main">
+<div class="dk-main">
     <h1>Test Equipment</h1>
     <p class="subtitle">Enter serial numbers, calibration dates, and accuracy for all instruments used during testing. Secondary instruments refer to a second unit deployed at a remote station.</p>
 
@@ -196,11 +168,11 @@
 
 <script>
 function toggleSidebar() {
-    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.dk-sidebar').classList.toggle('open');
     document.querySelector('.sidebar-backdrop').classList.toggle('active');
 }
 function closeSidebar() {
-    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.dk-sidebar').classList.remove('open');
     document.querySelector('.sidebar-backdrop').classList.remove('active');
 }
 

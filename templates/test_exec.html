@@ -7,30 +7,30 @@
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root { --sidebar-width: 340px; --primary-bg: #2c3e50; --accent: #16a085; --text-light: #ecf0f1; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+        :root { --dk-sidebar-width: 340px; --dk-accent: #16a085; }
+        body { margin: 0; display: flex; background: #1a1a2e; color: var(--dk-text-primary); min-height: 100vh; }
 
-        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
-        .sidebar-header .logo-link img { max-width: 110px; display: block; }
-        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
-        .sidebar-header a:hover { color: white; }
-        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
-        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
-        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; }
+        .dk-sidebar { width: var(--dk-sidebar-width); background: var(--dk-sidebar-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .dk-sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+        .dk-sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .dk-sidebar-header .logo-link img { max-width: 110px; display: block; }
+        .dk-sidebar-header a { color: var(--dk-text-muted); text-decoration: none; font-size: 0.8em; }
+        .dk-sidebar-header a:hover { color: white; }
+        .dk-sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .dk-sidebar-header p { margin: 0; font-size: 0.78em; color: var(--dk-text-muted); }
+        .dk-sidebar-section { padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+        .dk-sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dk-text-muted); }
         .param-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 0.84em; }
-        .param-label { color: #95a5a6; }
+        .param-label { color: var(--dk-text-muted); }
         .param-val { color: #ecf0f1; font-weight: 600; }
         label { display: block; font-size: 0.82em; color: #bdc3c7; margin-bottom: 3px; margin-top: 10px; }
         label:first-child { margin-top: 0; }
-        input[type="number"] { width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit; }
-        input[type="number"]:focus { outline: none; border-color: var(--accent); }
+        input[type="number"] { width: 100%; padding: 7px 9px; background: var(--dk-input-bg); border: 1px solid var(--dk-border); color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit; }
+        input[type="number"]:focus { outline: none; border-color: var(--dk-accent); }
         .btn { display: block; width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; font-family: inherit; }
-        .btn-accent { background: var(--accent); color: white; }
+        .btn-accent { background: var(--dk-accent); color: white; }
         .btn-danger { background: #c0392b; color: white; }
         .btn:hover { opacity: 0.88; }
         .save-status { font-size: 0.78em; text-align: center; margin-top: 6px; height: 16px; transition: opacity 0.3s; }
@@ -38,7 +38,7 @@
         .save-status.err { color: #e74c3c; }
         .hint { font-size: 0.75em; color: #7f8c8d; margin-top: 4px; }
 
-        .main { margin-left: var(--sidebar-width); flex: 1; min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+        .dk-main { margin-left: var(--dk-sidebar-width); flex: 1; min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
 
         /* Status banner */
         .status-banner { border-radius: 8px; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -63,7 +63,7 @@
         .table-header h3 { margin: 0; font-size: 0.95em; color: #bdc3c7; }
         .table-scroll { overflow-x: auto; overflow-y: auto; max-height: 50vh; }
         table { width: 100%; border-collapse: collapse; min-width: 1250px; }
-        th { background: #1a252f; padding: 8px 6px; text-align: center; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: #95a5a6; border-bottom: 1px solid #2c3e50; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+        th { background: #1a252f; padding: 8px 6px; text-align: center; font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--dk-text-muted); border-bottom: 1px solid #2c3e50; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
         th:first-child { text-align: left; padding-left: 8px; }
         td { padding: 3px 4px; border-bottom: 1px solid #1a252f; text-align: center; vertical-align: middle; }
         td:first-child { text-align: left; font-size: 0.8em; color: #7f8c8d; padding-left: 8px; min-width: 28px; }
@@ -72,18 +72,18 @@
             color: white; border-radius: 3px; font-size: 0.85em; font-family: inherit; text-align: center;
         }
         td input[type="text"] { text-align: left; }
-        td input:focus { outline: none; border-color: var(--accent); background: #0a1520; }
+        td input:focus { outline: none; border-color: var(--dk-accent); background: #0a1520; }
         /* Hide the native picker icon so Tab exits naturally after AM/PM */
         input.inp-time::-webkit-calendar-picker-indicator { display: none; }
         .time-wrap { display: flex; align-items: center; gap: 2px; }
         .time-wrap input { flex: 1; min-width: 0; }
         .time-pick-btn { flex-shrink: 0; background: none; border: 1px solid #2c3e50; border-radius: 3px; color: #7f8c8d; cursor: pointer; font-size: 0.85em; padding: 4px 5px; line-height: 1; }
-        .time-pick-btn:hover { color: var(--accent); border-color: var(--accent); }
+        .time-pick-btn:hover { color: var(--dk-accent); border-color: var(--dk-accent); }
         td select.inp-event {
             width: 100%; padding: 5px 4px; background: #0d1b2a; border: 1px solid #2c3e50;
             color: #bdc3c7; border-radius: 3px; font-size: 0.82em; font-family: inherit; cursor: pointer;
         }
-        td select.inp-event:focus { outline: none; border-color: var(--accent); }
+        td select.inp-event:focus { outline: none; border-color: var(--dk-accent); }
         td.computed { font-size: 0.85em; font-family: monospace; color: #bdc3c7; }
         td.dev-ok    { font-size: 0.85em; font-family: monospace; color: #27ae60; font-weight: 600; }
         td.dev-warn  { font-size: 0.85em; font-family: monospace; color: #f39c12; font-weight: 600; }
@@ -91,12 +91,12 @@
         td.del-cell  { width: 32px; }
         td.del-cell button { background: none; border: none; color: #7f8c8d; cursor: pointer; font-size: 1em; padding: 4px 6px; border-radius: 3px; }
         td.del-cell button:hover { color: #e74c3c; }
-        .add-row-btn { margin-top: 10px; padding: 7px 16px; background: #2c3e50; color: #bdc3c7; border: 1px dashed #455a64; border-radius: 4px; cursor: pointer; font-size: 0.85em; width: 100%; font-family: inherit; }
-        .add-row-btn:hover { background: #34495e; color: white; }
+        .add-row-btn { margin-top: 10px; padding: 7px 16px; background: #2c3e50; color: #bdc3c7; border: 1px dashed var(--dk-border); border-radius: 4px; cursor: pointer; font-size: 0.85em; width: 100%; font-family: inherit; }
+        .add-row-btn:hover { background: var(--dk-input-bg); color: white; }
 
         /* Row highlighting by event type */
         tr.ref-row td { background: rgba(22,160,133,0.08); }
-        tr.ref-row td:first-child::after { content: ' ref'; color: var(--accent); font-size: 0.78em; margin-left: 3px; }
+        tr.ref-row td:first-child::after { content: ' ref'; color: var(--dk-accent); font-size: 0.78em; margin-left: 3px; }
         tr.ev-test-start td  { background: rgba(39,174,96,0.06); }
         tr.ev-leak-check td  { background: rgba(243,156,18,0.06); }
         tr.ev-test-end td    { background: rgba(52,152,219,0.06); }
@@ -126,7 +126,7 @@
         .released-wrap { display: flex; gap: 2px; align-items: center; }
         .released-wrap input { flex: 1; min-width: 0; }
         select.inp-released-unit { padding: 5px 2px; background: #0d1b2a; border: 1px solid #2c3e50; color: #bdc3c7; border-radius: 3px; font-size: 0.78em; font-family: inherit; cursor: pointer; width: 36px; }
-        select.inp-released-unit:focus { outline: none; border-color: var(--accent); }
+        select.inp-released-unit:focus { outline: none; border-color: var(--dk-accent); }
         td.cell-dv  { font-size: 0.85em; font-family: monospace; color: #bdc3c7; }
         td.cell-cum { font-size: 0.85em; font-family: monospace; }
         td.cell-cum.loss-ok  { color: #27ae60; }
@@ -138,39 +138,20 @@
         .modal-box { background:#2c3e50; border-radius:8px; padding:24px; width:280px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
         .modal-box h3 { margin:0 0 14px; font-size:1em; }
         .modal-box label { display:block; font-size:0.82em; color:#bdc3c7; margin-bottom:6px; }
-        .modal-box input[type="time"] { width:100%; padding:8px 10px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:1em; font-family:inherit; }
-        .modal-box input[type="time"]:focus { outline:none; border-color:var(--accent); }
+        .modal-box input[type="time"] { width:100%; padding:8px 10px; background:var(--dk-input-bg); border:1px solid var(--dk-border); color:white; border-radius:4px; font-size:1em; font-family:inherit; }
+        .modal-box input[type="time"]:focus { outline:none; border-color:var(--dk-accent); }
         .modal-actions { display:flex; gap:8px; margin-top:16px; }
         /* Attempt badge */
         .attempt-badge { display: inline-block; background: rgba(243,156,18,0.2); border: 1px solid rgba(243,156,18,0.4); color: #f39c12; font-size: 0.72em; padding: 1px 7px; border-radius: 10px; vertical-align: middle; margin-left: 6px; font-weight: 600; }
-        /* User badge */
-        .user-badge { position: fixed; top: 16px; right: 20px; font-size: 0.82em; color: #95a5a6; z-index: 200; background: rgba(22,33,62,0.92); padding: 4px 10px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
-        .user-badge a { text-decoration: none; font-weight: 600; }
-
         /* ── Responsive ──────────────────────────────────────────────────── */
-        .menu-toggle {
-            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
-            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
-            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
-            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-        }
-        .sidebar-backdrop {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
-        }
-        .sidebar-backdrop.active { display: block; }
-
         @media (max-width: 1024px), (pointer: coarse) {
-            .menu-toggle { display: block; }
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
-            .user-badge { top: 14px; right: 12px; font-size: 0.78em; }
+            .dk-main { margin-left: 0; padding: 16px; padding-top: 58px; }
             .status-banner { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; }
             .status-meta { flex-wrap: wrap; gap: 10px 18px; }
         }
 
         @media (max-width: 600px) {
-            .main { padding: 10px; padding-top: 54px; gap: 14px; }
+            .dk-main { padding: 10px; padding-top: 54px; gap: 14px; }
             .chart-box { padding: 10px; }
             .table-box { padding: 10px; }
             .status-label { font-size: 1em; }
@@ -191,14 +172,16 @@
 <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
 <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
-<div class="user-badge">
+<div class="user-chip user-chip--dark">
     {{ session.user.name or session.user.email }}
-    {% if user_is_admin %}&nbsp;·&nbsp;<a href="/settings" style="color:#16a085;">Settings</a>{% endif %}
-    &nbsp;·&nbsp;<a href="/logout" style="color:#e74c3c;">Sign out</a>
+    {% if user_is_admin %}&nbsp;·&nbsp;
+    <a href="/settings" class="link-settings-teal">Settings</a>{% endif %}
+    &nbsp;·&nbsp;
+    <a href="/logout" class="link-signout">Sign out</a>
 </div>
 
-<div class="sidebar">
-    <div class="sidebar-header">
+<div class="dk-sidebar">
+    <div class="dk-sidebar-header">
         <a class="logo-link" href="/"><img src="/static/peslogo.png" alt="PES"></a>
         {% if equipment_data %}
         <a href="/equipment/{{ save_id }}" style="font-size:0.78em; color:#7f8c8d;">&#9998; Edit Equipment</a>
@@ -211,7 +194,7 @@
         <p>{{ save_name }}{% if portfolio_name %} &nbsp;·&nbsp; {{ portfolio_name }}{% endif %}</p>
     </div>
 
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Pipe Properties</h3>
         {% if p.get('nps') %}<div class="param-row"><span class="param-label">NPS</span><span class="param-val">{{ p.nps }}"</span></div>{% endif %}
         <div class="param-row"><span class="param-label"><span class="tt" data-tt="Outside Diameter per API 5L">OD</span></span><span class="param-val">{{ "%.3f"|format(p.od|float) }}"</span></div>
@@ -219,7 +202,7 @@
         {% if total_length_ft %}<div class="param-row"><span class="param-label">Section Length</span><span class="param-val">{{ "{:,.0f}".format(total_length_ft) }} ft</span></div>{% endif %}
     </div>
 
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Test Parameters</h3>
         {% if target_gauge %}
         <div class="param-row"><span class="param-label">Target Gauge</span><span class="param-val">{{ "%.1f"|format(target_gauge) }} psig</span></div>
@@ -267,7 +250,7 @@
         </select>
     </div>
 
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>MAOP Certification</h3>
         <label>Install Period <span style="font-size:0.78em; color:#7f8c8d;">(determines applicable CFR provisions)</span></label>
         <select id="cert-install-period" onchange="updateCert(); scheduleAutoSave();" style="width:100%; padding:7px 9px; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px; font-size:0.88em; font-family:inherit;">
@@ -291,14 +274,14 @@
         <div id="cert-result"></div>
     </div>
 
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Leak Detection</h3>
         <label><span class="tt" data-tt="If actual pressure falls more than this below the temperature-corrected expected pressure, a leak is flagged">Alert Threshold (psi)</span></label>
         <input type="number" id="leak-threshold" value="-10" step="1" max="0" oninput="updateAll(); scheduleAutoSave();">
         <p class="hint">Negative — deviation below corrected pressure that triggers a warning.</p>
     </div>
 
-    <div class="sidebar-section" id="pv-sidebar-section">
+    <div class="dk-sidebar-section" id="pv-sidebar-section">
         <h3>PV Plot</h3>
         <div id="pv-summary">
             {% if pv_data and pv_data.readings %}
@@ -326,7 +309,7 @@
         {% endif %}
     </div>
 
-    <div class="sidebar-section" style="border-bottom:none; margin-top:auto;">
+    <div class="dk-sidebar-section" style="border-bottom:none; margin-top:auto;">
         {% if test_status %}
         <div class="finalized-badge {{ test_status }}">
             {% if test_status == 'pass' %}&#10003; TEST PASSED{% else %}&#10007; TEST FAILED{% endif %}
@@ -355,7 +338,7 @@
     </div>
 </div>
 
-<div class="main">
+<div class="dk-main">
 
     <!-- Status Banner -->
     <div class="status-banner waiting" id="status-banner">
@@ -406,11 +389,11 @@
 
 <script>
 function toggleSidebar() {
-    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.dk-sidebar').classList.toggle('open');
     document.querySelector('.sidebar-backdrop').classList.toggle('active');
 }
 function closeSidebar() {
-    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.dk-sidebar').classList.remove('open');
     document.querySelector('.sidebar-backdrop').classList.remove('active');
 }
 
@@ -436,14 +419,41 @@ const WATCH_MODE = new URLSearchParams(window.location.search).get('watch') === 
 
 // ── WebSocket real-time sync ──────────────────────────────────────────────
 const socket = io();
-socket.emit('join_test', { save_id: SAVE_ID });
+var pendingRemoteUpdate = null;
+
+// Re-join room on every (re)connect so room membership survives transport drops
+socket.on('connect', function() {
+    socket.emit('join_test', { save_id: SAVE_ID });
+});
 window.addEventListener('beforeunload', function() {
     socket.emit('leave_test', { save_id: SAVE_ID });
 });
+
+function applyRemoteUpdate(readings) {
+    rebuildTableFromReadings(readings);
+    updateAll();
+}
+
 socket.on('readings_updated', function(data) {
     if (data.client_id === CLIENT_ID) return;
-    rebuildTableFromReadings(data.readings);
-    updateAll();
+    // Don't clobber an in-progress entry — defer until focus leaves the table
+    var active = document.activeElement;
+    var tbody = document.getElementById('readings-body');
+    if (active && tbody && tbody.contains(active)) {
+        pendingRemoteUpdate = data.readings;
+        return;
+    }
+    applyRemoteUpdate(data.readings);
+});
+
+// Apply any deferred remote update once the engineer leaves the table
+document.addEventListener('focusout', function(e) {
+    if (!pendingRemoteUpdate) return;
+    var tbody = document.getElementById('readings-body');
+    if (tbody && tbody.contains(e.target) && !tbody.contains(e.relatedTarget)) {
+        applyRemoteUpdate(pendingRemoteUpdate);
+        pendingRemoteUpdate = null;
+    }
 });
 
 // Derive gauge tolerance in psi from equipment data.
@@ -1211,12 +1221,12 @@ function renumberRows() {
     });
 }
 
-function addRow(data, suppressFocus) {
+function addRow(data, suppressFocus, suppressUpdate) {
     var tbody = document.getElementById('readings-body');
     var tr = makeRow(data);
     tbody.appendChild(tr);
     renumberRows();
-    updateAll();
+    if (!suppressUpdate) updateAll();
     if (!data && !suppressFocus) setTimeout(function() { tr.querySelector('.inp-time').focus(); }, 0);
 }
 
@@ -1262,11 +1272,13 @@ function clearReadings() {
 
 var autoSaveTimer = null;
 var isSaving = false;
+var pendingSave = false;  // queued while a save is in-flight
 
 function rebuildTableFromReadings(readings) {
     var tbody = document.getElementById('readings-body');
     tbody.innerHTML = '';
-    (readings || []).forEach(function(r) { addRow(r, true); });
+    (readings || []).forEach(function(r) { addRow(r, true, true); });
+    updateAll();  // single update after all rows are added
 }
 
 function scheduleAutoSave() {
@@ -1275,10 +1287,14 @@ function scheduleAutoSave() {
     autoSaveTimer = setTimeout(function() { saveData(true); }, 1200);
 }
 
-function saveData(silent) {
+function saveData(silent, onComplete) {
     clearTimeout(autoSaveTimer);
-    if (isSaving) return;
+    if (isSaving) {
+        pendingSave = true;  // re-queue: data changed while save was in-flight
+        return;
+    }
     isSaving = true;
+    pendingSave = false;
     var rows = getRows();
     var statusEl = document.getElementById('save-status');
     if (!silent) {
@@ -1302,12 +1318,16 @@ function saveData(silent) {
         statusEl.className = 'save-status ' + (d.status === 'ok' ? 'ok' : 'err');
         statusEl.textContent = d.status === 'ok' ? (silent ? 'Auto-saved' : 'Saved') : 'Error';
         setTimeout(function() { statusEl.textContent = ''; }, silent ? 1800 : 2500);
+        if (pendingSave) saveData(true);  // deliver data captured while we were in-flight
+        if (typeof onComplete === 'function') onComplete();
     }).catch(function() {
         isSaving = false;
         if (!silent) {
             statusEl.className = 'save-status err';
             statusEl.textContent = 'Save failed';
         }
+        if (pendingSave) saveData(true);
+        if (typeof onComplete === 'function') onComplete();
     });
 }
 
@@ -1420,8 +1440,23 @@ function openPVPlot() {
 
 function openPVModal() {
     var now = new Date();
-    document.getElementById('pv-start-time-input').value =
-        String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    var tz = getTimezone() || savedTimezone;
+    var hhmm;
+    if (tz) {
+        try {
+            var parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false
+            }).formatToParts(now);
+            var hh = (parts.find(function(p) { return p.type === 'hour'; }) || {}).value || '00';
+            var mm = (parts.find(function(p) { return p.type === 'minute'; }) || {}).value || '00';
+            hhmm = hh.padStart(2, '0') + ':' + mm.padStart(2, '0');
+        } catch (e) {
+            hhmm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        }
+    } else {
+        hhmm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+    document.getElementById('pv-start-time-input').value = hhmm;
     document.getElementById('pv-start-modal').classList.add('active');
     setTimeout(function() { document.getElementById('pv-start-time-input').focus(); }, 50);
 }
@@ -1433,15 +1468,15 @@ function closePVModal() {
 function confirmStartPV() {
     var t = document.getElementById('pv-start-time-input').value;
     closePVModal();
+    var url = '/pv/' + SAVE_ID + '?from=exec';
+    if (t) url += '&start=' + encodeURIComponent(t);
     if (t && !TEST_STATUS) {
         insertRowChronologically({ time: t, event: 'pv_start', comment: 'PV plot started' });
-        saveData(true);
-    }
-    setTimeout(function() {
-        var url = '/pv/' + SAVE_ID + '?from=exec';
-        if (t) url += '&start=' + encodeURIComponent(t);
+        // Navigate only after save completes so pv_start row is persisted
+        saveData(true, function() { window.location.href = url; });
+    } else {
         window.location.href = url;
-    }, 300);
+    }
 }
 
 (function init() {
@@ -1451,7 +1486,8 @@ function confirmStartPV() {
     if (savedConverted)   document.getElementById('cert-converted').checked = true;
     if (savedCertClass)   document.getElementById('cert-class').value = savedCertClass;
     if (savedReadings.length) {
-        savedReadings.forEach(function(r) { addRow(r); });
+        savedReadings.forEach(function(r) { addRow(r, true, true); });
+        updateAll();  // single update after bulk-loading saved readings
     } else {
         addRow();
     }

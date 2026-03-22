@@ -13,7 +13,7 @@ import os
 from contextlib import contextmanager
 
 from sqlalchemy import (
-    Boolean, Column, Float, ForeignKey, Integer, String, Text,
+    Boolean, Column, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint,
     create_engine, event,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -81,6 +81,7 @@ class SaveHistory(Base):
     params       = Column(Text)   # JSON
     col_map      = Column(Text)   # JSON
     project_info = Column(Text)   # JSON
+    __table_args__ = (UniqueConstraint('save_id', 'version', name='uq_savehistory_save_version'),)
 
 
 class TestRun(Base):
@@ -97,6 +98,10 @@ class TestRun(Base):
     last_updated = Column(String)
     is_current   = Column(Boolean, default=True)
     readings     = Column(Text)   # JSON array
+    __table_args__ = (
+        Index('ix_testrun_one_current', 'save_id', unique=True,
+              sqlite_where=(Column('is_current') == True)),
+    )
 
 
 class PVPlot(Base):
@@ -145,6 +150,7 @@ def get_engine():
         def _on_connect(dbapi_con, _):
             dbapi_con.execute('PRAGMA journal_mode=WAL')
             dbapi_con.execute('PRAGMA foreign_keys=ON')
+            dbapi_con.execute('PRAGMA busy_timeout=5000')
 
         Base.metadata.create_all(_engine)
         _add_missing_columns(_engine)
@@ -187,13 +193,18 @@ def db_session():
 # Save helpers — maintain dict shape identical to the old JSON files
 # ---------------------------------------------------------------------------
 
-def _j(text, default=None):
+import logging as _logging
+_db_logger = _logging.getLogger('hydrotest.db')
+
+def _j(text, default=None, _col_hint=''):
     """Decode JSON column, returning default on None/error."""
     if text is None:
         return default
     try:
         return json.loads(text)
-    except Exception:
+    except Exception as exc:
+        _db_logger.warning('JSON decode error%s: %s — value: %.120r',
+                           f' in {_col_hint}' if _col_hint else '', exc, text)
         return default
 
 
@@ -215,87 +226,92 @@ def _save_row_to_dict(s):
     }
 
 
+def _load_save_in_session(save_id, sess):
+    """Assemble the full save dict from an already-open session. Returns None if not found."""
+    s = sess.get(Save, save_id)
+    if s is None:
+        return None
+    data = _save_row_to_dict(s)
+
+    data['history'] = [
+        {
+            'version':      h.version,
+            'timestamp':    h.timestamp,
+            'notes':        h.notes or '',
+            'params':       _j(h.params, {}),
+            'col_map':      _j(h.col_map, {}),
+            'project_info': _j(h.project_info, {}),
+        }
+        for h in sess.query(SaveHistory)
+                      .filter_by(save_id=save_id)
+                      .order_by(SaveHistory.version)
+                      .all()
+    ]
+
+    data['rupture_analyses'] = [
+        {
+            'id':             ra.id,
+            'label':          ra.label,
+            'mode':           ra.mode,
+            'rup_station':    _j(ra.rup_station, ''),
+            'specific_weight': ra.specific_weight,
+            'saved_at':       ra.saved_at,
+            'saved_by':       ra.saved_by,
+            'results':        _j(ra.results, {}),
+            'modified_at':    ra.modified_at,
+            'modified_by':    ra.modified_by,
+        }
+        for ra in sess.query(RuptureAnalysis).filter_by(save_id=save_id).all()
+    ]
+
+    pv = sess.query(PVPlot).filter_by(save_id=save_id).first()
+    if pv:
+        data['pv_data'] = {
+            'pump':               _j(pv.pump, {}),
+            'unrestrained_length': pv.unrestrained_length,
+            'readings':           _j(pv.readings, []),
+            'last_updated':       pv.last_updated,
+        }
+
+    current = sess.query(TestRun).filter_by(save_id=save_id, is_current=True).first()
+    if current:
+        data['test_data'] = {
+            'readings':     _j(current.readings, []),
+            'test_date':    current.test_date,
+            'timezone':     current.timezone,
+            'install_date': current.install_date,
+            'converted':    current.converted,
+            'cert_class':   current.cert_class,
+            'status':       current.status,
+            'finalized_at': current.finalized_at,
+            'last_updated': current.last_updated,
+        }
+
+    data['test_history'] = [
+        {
+            'readings':     _j(r.readings, []),
+            'test_date':    r.test_date,
+            'timezone':     r.timezone,
+            'install_date': r.install_date,
+            'converted':    r.converted,
+            'cert_class':   r.cert_class,
+            'status':       r.status,
+            'finalized_at': r.finalized_at,
+            'last_updated': r.last_updated,
+        }
+        for r in sess.query(TestRun)
+                     .filter_by(save_id=save_id, is_current=False)
+                     .order_by(TestRun.id.desc())
+                     .all()
+    ]
+
+    return data
+
+
 def load_save(save_id):
     """Return the full save dict (with history, test data, pv, ruptures), or None."""
     with db_session() as sess:
-        s = sess.get(Save, save_id)
-        if s is None:
-            return None
-        data = _save_row_to_dict(s)
-
-        data['history'] = [
-            {
-                'version':      h.version,
-                'timestamp':    h.timestamp,
-                'notes':        h.notes or '',
-                'params':       _j(h.params, {}),
-                'col_map':      _j(h.col_map, {}),
-                'project_info': _j(h.project_info, {}),
-            }
-            for h in sess.query(SaveHistory)
-                          .filter_by(save_id=save_id)
-                          .order_by(SaveHistory.version)
-                          .all()
-        ]
-
-        data['rupture_analyses'] = [
-            {
-                'id':             ra.id,
-                'label':          ra.label,
-                'mode':           ra.mode,
-                'rup_station':    _j(ra.rup_station, ''),
-                'specific_weight': ra.specific_weight,
-                'saved_at':       ra.saved_at,
-                'saved_by':       ra.saved_by,
-                'results':        _j(ra.results, {}),
-                'modified_at':    ra.modified_at,
-                'modified_by':    ra.modified_by,
-            }
-            for ra in sess.query(RuptureAnalysis).filter_by(save_id=save_id).all()
-        ]
-
-        pv = sess.query(PVPlot).filter_by(save_id=save_id).first()
-        if pv:
-            data['pv_data'] = {
-                'pump':               _j(pv.pump, {}),
-                'unrestrained_length': pv.unrestrained_length,
-                'readings':           _j(pv.readings, []),
-                'last_updated':       pv.last_updated,
-            }
-
-        current = sess.query(TestRun).filter_by(save_id=save_id, is_current=True).first()
-        if current:
-            data['test_data'] = {
-                'readings':     _j(current.readings, []),
-                'test_date':    current.test_date,
-                'timezone':     current.timezone,
-                'install_date': current.install_date,
-                'converted':    current.converted,
-                'cert_class':   current.cert_class,
-                'status':       current.status,
-                'finalized_at': current.finalized_at,
-                'last_updated': current.last_updated,
-            }
-
-        data['test_history'] = [
-            {
-                'readings':     _j(r.readings, []),
-                'test_date':    r.test_date,
-                'timezone':     r.timezone,
-                'install_date': r.install_date,
-                'converted':    r.converted,
-                'cert_class':   r.cert_class,
-                'status':       r.status,
-                'finalized_at': r.finalized_at,
-                'last_updated': r.last_updated,
-            }
-            for r in sess.query(TestRun)
-                         .filter_by(save_id=save_id, is_current=False)
-                         .order_by(TestRun.id.desc())
-                         .all()
-        ]
-
-        return data
+        return _load_save_in_session(save_id, sess)
 
 
 def load_all_saves():
@@ -312,108 +328,162 @@ def load_all_saves():
         return result
 
 
+def _write_save_in_session(data, sess):
+    """Upsert a save dict using an already-open session (no commit)."""
+    save_id = data['id']
+    s = sess.get(Save, save_id)
+    if s is None:
+        s = Save(id=save_id)
+        sess.add(s)
+    s.version      = data.get('version', 1)
+    s.name         = data.get('name', '')
+    s.notes        = data.get('notes', '')
+    s.timestamp    = data.get('timestamp')
+    s.portfolio_id = data.get('portfolio_id')
+    s.owner_sub    = data.get('owner_sub')
+    s.file_path    = data.get('file_path')
+    s.params         = json.dumps(data.get('params', {}))
+    s.col_map        = json.dumps(data.get('col_map', {}))
+    s.project_info   = json.dumps(data.get('project_info', {}))
+    if 'equipment_data' in data:
+        s.equipment_data = json.dumps(data['equipment_data'])
+
+    if 'history' in data:
+        sess.query(SaveHistory).filter_by(save_id=save_id).delete()
+        for h in data['history']:
+            sess.add(SaveHistory(
+                save_id=save_id,
+                version=h.get('version', 1),
+                timestamp=h.get('timestamp'),
+                notes=h.get('notes', ''),
+                params=json.dumps(h.get('params', {})),
+                col_map=json.dumps(h.get('col_map', {})),
+                project_info=json.dumps(h.get('project_info', {})),
+            ))
+
+    if 'rupture_analyses' in data:
+        sess.query(RuptureAnalysis).filter_by(save_id=save_id).delete()
+        for ra in data['rupture_analyses']:
+            sess.add(RuptureAnalysis(
+                id=ra['id'],
+                save_id=save_id,
+                label=ra.get('label', ''),
+                mode=ra.get('mode', 'single'),
+                rup_station=json.dumps(ra.get('rup_station', '')),
+                specific_weight=ra.get('specific_weight', 62.4),
+                saved_at=ra.get('saved_at'),
+                saved_by=ra.get('saved_by'),
+                results=json.dumps(ra.get('results', {})),
+                modified_at=ra.get('modified_at'),
+                modified_by=ra.get('modified_by'),
+            ))
+
+    if 'pv_data' in data:
+        sess.query(PVPlot).filter_by(save_id=save_id).delete()
+        pv = data['pv_data']
+        if pv:
+            sess.add(PVPlot(
+                save_id=save_id,
+                pump=json.dumps(pv.get('pump', {})),
+                unrestrained_length=pv.get('unrestrained_length', 0),
+                readings=json.dumps(pv.get('readings', [])),
+                last_updated=pv.get('last_updated'),
+            ))
+
+    if 'test_data' in data or 'test_history' in data:
+        sess.query(TestRun).filter_by(save_id=save_id).delete()
+        td = data.get('test_data')
+        if td:
+            sess.add(TestRun(
+                save_id=save_id,
+                is_current=True,
+                readings=json.dumps(td.get('readings', [])),
+                test_date=td.get('test_date'),
+                timezone=td.get('timezone'),
+                install_date=td.get('install_date'),
+                converted=td.get('converted'),
+                cert_class=td.get('cert_class'),
+                status=td.get('status'),
+                finalized_at=td.get('finalized_at'),
+                last_updated=td.get('last_updated'),
+            ))
+        for h in data.get('test_history', []):
+            sess.add(TestRun(
+                save_id=save_id,
+                is_current=False,
+                readings=json.dumps(h.get('readings', [])),
+                test_date=h.get('test_date'),
+                timezone=h.get('timezone'),
+                install_date=h.get('install_date'),
+                converted=h.get('converted'),
+                cert_class=h.get('cert_class'),
+                status=h.get('status'),
+                finalized_at=h.get('finalized_at'),
+                last_updated=h.get('last_updated'),
+            ))
+
+
 def write_save(data):
     """Full upsert of a save dict into the DB.
 
     Keys absent from data are preserved (e.g. rupture_analyses not included
     in data → existing rows are kept rather than deleted).
     """
-    save_id = data['id']
     with db_session() as sess:
-        s = sess.get(Save, save_id)
-        if s is None:
-            s = Save(id=save_id)
-            sess.add(s)
-        s.version      = data.get('version', 1)
-        s.name         = data.get('name', '')
-        s.notes        = data.get('notes', '')
-        s.timestamp    = data.get('timestamp')
-        s.portfolio_id = data.get('portfolio_id')
-        s.owner_sub    = data.get('owner_sub')
-        s.file_path    = data.get('file_path')
-        s.params         = json.dumps(data.get('params', {}))
-        s.col_map        = json.dumps(data.get('col_map', {}))
-        s.project_info   = json.dumps(data.get('project_info', {}))
-        if 'equipment_data' in data:
-            s.equipment_data = json.dumps(data['equipment_data'])
+        _write_save_in_session(data, sess)
 
-        # History — replace only when provided
-        if 'history' in data:
-            sess.query(SaveHistory).filter_by(save_id=save_id).delete()
-            for h in data['history']:
-                sess.add(SaveHistory(
-                    save_id=save_id,
-                    version=h.get('version', 1),
-                    timestamp=h.get('timestamp'),
-                    notes=h.get('notes', ''),
-                    params=json.dumps(h.get('params', {})),
-                    col_map=json.dumps(h.get('col_map', {})),
-                    project_info=json.dumps(h.get('project_info', {})),
-                ))
 
-        # Rupture analyses — replace only when provided
-        if 'rupture_analyses' in data:
-            sess.query(RuptureAnalysis).filter_by(save_id=save_id).delete()
-            for ra in data['rupture_analyses']:
-                sess.add(RuptureAnalysis(
-                    id=ra['id'],
-                    save_id=save_id,
-                    label=ra.get('label', ''),
-                    mode=ra.get('mode', 'single'),
-                    rup_station=json.dumps(ra.get('rup_station', '')),
-                    specific_weight=ra.get('specific_weight', 62.4),
-                    saved_at=ra.get('saved_at'),
-                    saved_by=ra.get('saved_by'),
-                    results=json.dumps(ra.get('results', {})),
-                    modified_at=ra.get('modified_at'),
-                    modified_by=ra.get('modified_by'),
-                ))
+# ---------------------------------------------------------------------------
+# Atomic mutation — prevents read-modify-write races under multi-device sync
+# ---------------------------------------------------------------------------
 
-        # PV data — replace only when provided
-        if 'pv_data' in data:
-            sess.query(PVPlot).filter_by(save_id=save_id).delete()
-            pv = data['pv_data']
-            if pv:
-                sess.add(PVPlot(
-                    save_id=save_id,
-                    pump=json.dumps(pv.get('pump', {})),
-                    unrestrained_length=pv.get('unrestrained_length', 0),
-                    readings=json.dumps(pv.get('readings', [])),
-                    last_updated=pv.get('last_updated'),
-                ))
+class MutationConflict(Exception):
+    """Raise inside mutate_fn to abort with HTTP 409. message is returned to caller."""
+    def __init__(self, message):
+        self.message = message
 
-        # Test runs — replace only when provided
-        if 'test_data' in data or 'test_history' in data:
-            sess.query(TestRun).filter_by(save_id=save_id).delete()
-            td = data.get('test_data')
-            if td:
-                sess.add(TestRun(
-                    save_id=save_id,
-                    is_current=True,
-                    readings=json.dumps(td.get('readings', [])),
-                    test_date=td.get('test_date'),
-                    timezone=td.get('timezone'),
-                    install_date=td.get('install_date'),
-                    converted=td.get('converted'),
-                    cert_class=td.get('cert_class'),
-                    status=td.get('status'),
-                    finalized_at=td.get('finalized_at'),
-                    last_updated=td.get('last_updated'),
-                ))
-            for h in data.get('test_history', []):
-                sess.add(TestRun(
-                    save_id=save_id,
-                    is_current=False,
-                    readings=json.dumps(h.get('readings', [])),
-                    test_date=h.get('test_date'),
-                    timezone=h.get('timezone'),
-                    install_date=h.get('install_date'),
-                    converted=h.get('converted'),
-                    cert_class=h.get('cert_class'),
-                    status=h.get('status'),
-                    finalized_at=h.get('finalized_at'),
-                    last_updated=h.get('last_updated'),
-                ))
+
+class MutationError(Exception):
+    """Raise inside mutate_fn to abort with HTTP 400."""
+    def __init__(self, message):
+        self.message = message
+
+
+def atomic_save_mutation(save_id, mutate_fn):
+    """Load a save, apply mutate_fn(data), and write back — all in one BEGIN IMMEDIATE
+    transaction. This prevents read-modify-write races between concurrent devices.
+
+    mutate_fn(data) should modify *data* in-place.
+      - Raise MutationConflict(msg) to abort with a 409-worthy message.
+      - Raise MutationError(msg)    to abort with a 400-worthy message.
+      - Return normally to commit.
+
+    Returns the (possibly modified) data dict, or None if save_id not found.
+    Re-raises MutationConflict / MutationError / any other exception after rollback.
+    """
+    from sqlalchemy import text
+    Session = _factory()
+    sess = Session()
+    try:
+        # BEGIN IMMEDIATE acquires the write lock before reading, serializing all mutations
+        sess.execute(text('BEGIN IMMEDIATE'))
+        data = _load_save_in_session(save_id, sess)
+        if data is None:
+            sess.rollback()
+            return None
+        mutate_fn(data)
+        _write_save_in_session(data, sess)
+        sess.commit()
+        return data
+    except (MutationConflict, MutationError):
+        sess.rollback()
+        raise
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        sess.close()
+
 
 
 def delete_save(save_id):
@@ -474,6 +544,17 @@ def upsert_portfolio(portfolio_id, name, company=None):
 def delete_portfolio(portfolio_id):
     with db_session() as sess:
         sess.query(Portfolio).filter_by(id=portfolio_id).delete()
+
+
+def delete_portfolio_cascade(portfolio_id):
+    """Atomically delete a portfolio, null saves referencing it, and strip it from user lists."""
+    with db_session() as sess:
+        sess.query(Portfolio).filter_by(id=portfolio_id).delete()
+        sess.query(Save).filter_by(portfolio_id=portfolio_id).update({'portfolio_id': None})
+        for u in sess.query(User).all():
+            pids = _j(u.portfolio_ids, [])
+            if portfolio_id in pids:
+                u.portfolio_ids = json.dumps([p for p in pids if p != portfolio_id])
 
 
 # ---------------------------------------------------------------------------
@@ -606,6 +687,103 @@ def db_remove_portfolio_from_all_users(portfolio_id):
             pids = _j(u.portfolio_ids, [])
             if portfolio_id in pids:
                 u.portfolio_ids = json.dumps([p for p in pids if p != portfolio_id])
+
+
+# ---------------------------------------------------------------------------
+# User-store logic (consolidated from user_store.py)
+# ---------------------------------------------------------------------------
+
+VALID_ROLES  = ('hydro', 'hydro-admin')
+ADMIN_GROUPS = frozenset({'hydro-admin'})
+USER_GROUPS  = frozenset({'hydro', 'hydro-admin'})
+
+
+def resolve_role(groups):
+    if not groups:
+        return None
+    group_set = {g.lower() for g in groups}
+    if group_set & ADMIN_GROUPS:
+        return 'hydro-admin'
+    if group_set & USER_GROUPS:
+        return 'hydro'
+    return None
+
+
+def upsert_user(sub, email, name, groups, provider_id):
+    """Create or update a user record on login. Returns the user dict."""
+    from datetime import datetime as _dt
+    now  = _dt.utcnow().strftime('%Y-%m-%d %H:%M')
+    role = resolve_role(groups)
+    return db_upsert_user(sub, email, name, groups, provider_id, role, now)
+
+
+def load_users():
+    return db_load_users()
+
+
+def get_user(sub):
+    return db_get_user(sub)
+
+
+def set_user_role(sub, role, lock=True):
+    if role not in VALID_ROLES:
+        return None
+    return db_set_user_role(sub, role, lock)
+
+
+def delete_user(sub):
+    db_delete_user(sub)
+
+
+def is_admin(user_session):
+    if not user_session:
+        return False
+    sub = user_session.get('sub')
+    if not sub:
+        return False
+    user = db_get_user(sub)
+    return user is not None and user.get('role') == 'hydro-admin'
+
+
+def has_access(user_session):
+    if not user_session:
+        return False
+    sub = user_session.get('sub')
+    if not sub:
+        return False
+    user = db_get_user(sub)
+    return user is not None and user.get('role') in VALID_ROLES
+
+
+def is_first_user():
+    return db_is_first_user()
+
+
+def get_user_portfolio_ids(user_session):
+    """Return list of portfolio IDs the user can access, or None for admins."""
+    if not user_session:
+        return []
+    if user_session.get('role') == 'hydro-admin':
+        return None  # admin sees everything
+    sub = user_session.get('sub')
+    if not sub:
+        return []
+    user = db_get_user(sub)
+    if not user:
+        return []
+    return user.get('portfolio_ids', [])
+
+
+def set_user_portfolios(sub, portfolio_ids):
+    return db_set_user_portfolios(sub, portfolio_ids)
+
+
+def add_portfolio_to_user(sub, portfolio_id):
+    return db_add_portfolio_to_user(sub, portfolio_id)
+
+
+def remove_portfolio_from_all_users(portfolio_id):
+    db_remove_portfolio_from_all_users(portfolio_id)
 
 
 # Initialise the DB immediately on import so tables exist before any request.

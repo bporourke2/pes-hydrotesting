@@ -4,77 +4,81 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Column Mapping — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/shared.css">
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/tooltips.js" defer></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
-        .logo { max-width: 180px; margin-bottom: 28px; }
-        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
-        .subtitle { color: #7f8c8d; margin-bottom: 36px; font-size: 0.95em; }
-
-        .card { background: white; border-radius: 10px; padding: 28px 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; width: 100%; max-width: 860px; margin-bottom: 24px; }
-        .card.card-blue { border-top-color: #2c3e50; }
-        .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
-
         /* Drag-drop upload zone */
-        .drop-zone { border: 2px dashed #b2bec3; border-radius: 8px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; background: #f8fafb; }
-        .drop-zone:hover, .drop-zone.dragover { border-color: #27ae60; background: #f0faf4; }
+        .drop-zone { border: 2px dashed #b2bec3; border-radius: var(--radius-lg); padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; background: #f8fafb; }
+        .drop-zone:hover, .drop-zone.dragover { border-color: var(--color-green-600); background: #f0faf4; }
         .drop-zone svg { width: 36px; height: 36px; color: #b2bec3; margin-bottom: 10px; display: block; margin: 0 auto 10px; }
         .drop-zone p { margin: 0 0 4px; color: #555; font-size: 0.95em; }
-        .drop-zone .drop-hint { font-size: 0.82em; color: #95a5a6; }
-        .drop-zone .drop-filename { font-size: 0.88em; color: #27ae60; font-weight: 600; margin-top: 8px; }
+        .drop-zone .drop-hint { font-size: 0.82em; color: var(--color-slate-400); }
+        .drop-zone .drop-filename { font-size: 0.88em; color: var(--color-green-600); font-weight: 600; margin-top: 8px; }
         .drop-zone input[type="file"] { display: none; }
 
         /* Mapping grid */
         .mapping-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 20px; }
-        @media (max-width: 640px) {
-            .mapping-grid { grid-template-columns: 1fr; }
-            body { padding: 20px 12px; padding-top: 50px; }
-        }
 
-        label { display: block; font-size: 0.82em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; font-weight: 600; }
+        /* Form controls (appearance:none required for consistent select arrows) */
+        label { display: block; font-size: var(--label-size); color: var(--lt-text-muted); text-transform: uppercase; letter-spacing: var(--label-spacing); margin-bottom: 5px; font-weight: 600; }
         select, input[type="number"] {
-            width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;
-            font-size: 0.9em; font-family: inherit; background: white; color: #2c3e50;
+            width: 100%; padding: var(--lt-input-pad);
+            border: 1px solid var(--lt-border); border-radius: var(--radius-sm);
+            font-size: 0.9em; font-family: var(--font-family); background: white; color: var(--lt-text-primary);
             appearance: none;
         }
-        select:focus, input[type="number"]:focus { outline: none; border-color: #27ae60; }
+        select:focus, input[type="number"]:focus { outline: none; border-color: var(--lt-focus-ring); }
 
         /* Preview table */
-        .preview-wrap { overflow-x: auto; max-height: 260px; border: 1px solid #eee; border-radius: 6px; }
+        .preview-wrap { overflow-x: auto; max-height: 260px; border: 1px solid #eee; border-radius: var(--radius-md); }
         .preview-wrap table { width: 100%; border-collapse: collapse; font-size: 0.78em; }
-        .preview-wrap th { background: #f8f9fa; padding: 6px 10px; border-bottom: 2px solid #dee2e6; text-align: left; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; position: sticky; top: 0; }
+        .preview-wrap th { background: var(--color-slate-100); padding: 6px 10px; border-bottom: 2px solid var(--color-slate-200); text-align: left; color: var(--lt-text-muted); text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; position: sticky; top: 0; }
         .preview-wrap td { padding: 5px 10px; border-bottom: 1px solid #f0f0f0; color: #444; white-space: nowrap; }
 
-        /* Buttons */
-        .btn { display: inline-block; padding: 9px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; font-family: inherit; text-decoration: none; line-height: 1.4; transition: opacity 0.15s; }
-        .btn:hover { opacity: 0.88; }
-        .btn-green { background: #27ae60; color: white; }
-        .btn-dark { background: #2c3e50; color: white; }
-        .btn-full { width: 100%; display: block; text-align: center; padding: 11px; font-size: 0.95em; }
-
-        .back-link { color: #7f8c8d; font-size: 0.85em; text-decoration: none; margin-bottom: 20px; display: inline-block; }
-        .back-link:hover { color: #2c3e50; }
         .divider { border: none; border-top: 1px solid #eee; margin: 18px 0; }
+
+        @media (max-width: 600px) {
+            .mapping-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
-<body>
+<body class="page-light">
 
-<div style="position:fixed; top:10px; right:10px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08); max-width:calc(100vw - 20px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+<button class="lt-menu-toggle" onclick="toggleLtNav()" aria-label="Open menu">&#9776;</button>
+<div class="lt-nav-backdrop" id="lt-nav-backdrop" onclick="toggleLtNav()"></div>
+<div class="lt-nav-drawer" id="lt-nav-drawer">
+    <div class="lt-nav-drawer-header">
+        <a href="/"><img src="/static/peslogo.png" alt="PES Logo"></a>
+        <div class="nav-user">{{ session.user.name or session.user.email }}</div>
+    </div>
+    <div class="lt-nav-drawer-links">
+        <a href="/">&#8962; Home</a>
+        {% if user_is_admin %}<a href="/settings" class="link-settings">&#9881; Settings</a>{% endif %}
+        <a href="/logout" class="link-signout">&#8594; Sign out</a>
+    </div>
+</div>
+<script>
+function toggleLtNav() {
+    document.getElementById('lt-nav-drawer').classList.toggle('open');
+    document.getElementById('lt-nav-backdrop').classList.toggle('active');
+}
+</script>
+
+<div class="user-chip">
     {{ session.user.name or session.user.email }}
     {% if user_is_admin %}&nbsp;·&nbsp;
-    <a href="/settings" style="color:#8e44ad; text-decoration:none; font-weight:600;">Settings</a>{% endif %}
+    <a href="/settings" class="link-settings">Settings</a>{% endif %}
     &nbsp;·&nbsp;
-    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+    <a href="/logout" class="link-signout">Sign out</a>
 </div>
 
-<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="logo"></a>
-<h1>New Analysis</h1>
-<p class="subtitle">Upload your pipeline survey data and map the required columns</p>
+<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="page-logo"></a>
+<h1 class="page-title">New Analysis</h1>
+<p class="page-subtitle">Upload your pipeline survey data and map the required columns</p>
 
 <!-- Upload -->
-<div class="card">
+<div class="lt-card" style="max-width:860px;">
     <h2>Upload Data File</h2>
     <form method="POST" enctype="multipart/form-data" id="upload-form">
         <div class="drop-zone" id="drop-zone">
@@ -88,7 +92,7 @@
         </div>
     </form>
     {% if upload_error %}
-    <div style="margin-top:14px; padding:10px 14px; background:#fdf2f2; border:1px solid #e74c3c; border-radius:5px; color:#c0392b; font-size:0.88em;">
+    <div style="margin-top:14px; padding:10px 14px; background:#fdf2f2; border:1px solid var(--color-red-600); border-radius:var(--radius-sm); color:var(--color-red-700); font-size:0.88em;">
         &#9888; {{ upload_error }}
     </div>
     {% elif preview %}
@@ -113,7 +117,7 @@
 </div>
 
 <!-- Column Mapping + Parameters -->
-<div class="card card-blue">
+<div class="lt-card lt-card--dark" style="max-width:860px;">
     <h2>Map Columns &amp; Set Parameters</h2>
     <form method="POST" id="mapping-form">
         <input type="hidden" name="sheet_name" id="sheet-name-input" value="{{ current_sheet }}">
@@ -143,7 +147,7 @@
                     <input type="number" name="wt_constant" id="wt-constant-input" step="0.001" min="0.001" max="5"
                         placeholder="e.g. 0.500"
                         value="{{ session.get('col_map', {}).get('wt_constant', '') }}"
-                        style="border:1px solid #27ae60;">
+                        style="border:1px solid var(--color-green-600);">
                 </div>
             </div>
             <div>
@@ -162,42 +166,50 @@
                 <label><span class="tt tt-dark" data-tt="Nominal Pipe Size per API 5L — determines the outside diameter of the pipe">NPS</span></label>
                 <select name="nps">
                     {% set sel = p.get('nps', '42') %}
-                    <option value="0.5"  {% if sel=='0.5'  %}selected{% endif %}>NPS 1/2   (0.840")</option>
-                    <option value="0.75" {% if sel=='0.75' %}selected{% endif %}>NPS 3/4   (1.050")</option>
-                    <option value="1"    {% if sel=='1'    %}selected{% endif %}>NPS 1     (1.315")</option>
-                    <option value="1.25" {% if sel=='1.25' %}selected{% endif %}>NPS 1-1/4 (1.660")</option>
-                    <option value="1.5"  {% if sel=='1.5'  %}selected{% endif %}>NPS 1-1/2 (1.900")</option>
-                    <option value="2"    {% if sel=='2'    %}selected{% endif %}>NPS 2     (2.375")</option>
-                    <option value="2.5"  {% if sel=='2.5'  %}selected{% endif %}>NPS 2-1/2 (2.875")</option>
-                    <option value="3"    {% if sel=='3'    %}selected{% endif %}>NPS 3     (3.500")</option>
-                    <option value="3.5"  {% if sel=='3.5'  %}selected{% endif %}>NPS 3-1/2 (4.000")</option>
-                    <option value="4"    {% if sel=='4'    %}selected{% endif %}>NPS 4     (4.500")</option>
-                    <option value="5"    {% if sel=='5'    %}selected{% endif %}>NPS 5     (5.563")</option>
-                    <option value="6"    {% if sel=='6'    %}selected{% endif %}>NPS 6     (6.625")</option>
-                    <option value="8"    {% if sel=='8'    %}selected{% endif %}>NPS 8     (8.625")</option>
-                    <option value="10"   {% if sel=='10'   %}selected{% endif %}>NPS 10   (10.750")</option>
-                    <option value="12"   {% if sel=='12'   %}selected{% endif %}>NPS 12   (12.750")</option>
-                    <option value="14"   {% if sel=='14'   %}selected{% endif %}>NPS 14   (14.000")</option>
-                    <option value="16"   {% if sel=='16'   %}selected{% endif %}>NPS 16   (16.000")</option>
-                    <option value="18"   {% if sel=='18'   %}selected{% endif %}>NPS 18   (18.000")</option>
-                    <option value="20"   {% if sel=='20'   %}selected{% endif %}>NPS 20   (20.000")</option>
-                    <option value="22"   {% if sel=='22'   %}selected{% endif %}>NPS 22   (22.000")</option>
-                    <option value="24"   {% if sel=='24'   %}selected{% endif %}>NPS 24   (24.000")</option>
-                    <option value="26"   {% if sel=='26'   %}selected{% endif %}>NPS 26   (26.000")</option>
-                    <option value="28"   {% if sel=='28'   %}selected{% endif %}>NPS 28   (28.000")</option>
-                    <option value="30"   {% if sel=='30'   %}selected{% endif %}>NPS 30   (30.000")</option>
-                    <option value="32"   {% if sel=='32'   %}selected{% endif %}>NPS 32   (32.000")</option>
-                    <option value="34"   {% if sel=='34'   %}selected{% endif %}>NPS 34   (34.000")</option>
-                    <option value="36"   {% if sel=='36'   %}selected{% endif %}>NPS 36   (36.000")</option>
-                    <option value="38"   {% if sel=='38'   %}selected{% endif %}>NPS 38   (38.000")</option>
-                    <option value="40"   {% if sel=='40'   %}selected{% endif %}>NPS 40   (40.000")</option>
-                    <option value="42"   {% if sel=='42'   %}selected{% endif %}>NPS 42   (42.000")</option>
-                    <option value="44"   {% if sel=='44'   %}selected{% endif %}>NPS 44   (44.000")</option>
-                    <option value="46"   {% if sel=='46'   %}selected{% endif %}>NPS 46   (46.000")</option>
-                    <option value="48"   {% if sel=='48'   %}selected{% endif %}>NPS 48   (48.000")</option>
-                    <option value="52"   {% if sel=='52'   %}selected{% endif %}>NPS 52   (52.000")</option>
-                    <option value="56"   {% if sel=='56'   %}selected{% endif %}>NPS 56   (56.000")</option>
-                    <option value="60"   {% if sel=='60'   %}selected{% endif %}>NPS 60   (60.000")</option>
+                    <optgroup label="Small Bore (½–4 in)">
+                        <option value="0.5"  {% if sel=='0.5'  %}selected{% endif %}>NPS 1/2   (0.840")</option>
+                        <option value="0.75" {% if sel=='0.75' %}selected{% endif %}>NPS 3/4   (1.050")</option>
+                        <option value="1"    {% if sel=='1'    %}selected{% endif %}>NPS 1     (1.315")</option>
+                        <option value="1.25" {% if sel=='1.25' %}selected{% endif %}>NPS 1-1/4 (1.660")</option>
+                        <option value="1.5"  {% if sel=='1.5'  %}selected{% endif %}>NPS 1-1/2 (1.900")</option>
+                        <option value="2"    {% if sel=='2'    %}selected{% endif %}>NPS 2     (2.375")</option>
+                        <option value="2.5"  {% if sel=='2.5'  %}selected{% endif %}>NPS 2-1/2 (2.875")</option>
+                        <option value="3"    {% if sel=='3'    %}selected{% endif %}>NPS 3     (3.500")</option>
+                        <option value="3.5"  {% if sel=='3.5'  %}selected{% endif %}>NPS 3-1/2 (4.000")</option>
+                        <option value="4"    {% if sel=='4'    %}selected{% endif %}>NPS 4     (4.500")</option>
+                    </optgroup>
+                    <optgroup label="Medium (5–16 in)">
+                        <option value="5"    {% if sel=='5'    %}selected{% endif %}>NPS 5     (5.563")</option>
+                        <option value="6"    {% if sel=='6'    %}selected{% endif %}>NPS 6     (6.625")</option>
+                        <option value="8"    {% if sel=='8'    %}selected{% endif %}>NPS 8     (8.625")</option>
+                        <option value="10"   {% if sel=='10'   %}selected{% endif %}>NPS 10   (10.750")</option>
+                        <option value="12"   {% if sel=='12'   %}selected{% endif %}>NPS 12   (12.750")</option>
+                        <option value="14"   {% if sel=='14'   %}selected{% endif %}>NPS 14   (14.000")</option>
+                        <option value="16"   {% if sel=='16'   %}selected{% endif %}>NPS 16   (16.000")</option>
+                    </optgroup>
+                    <optgroup label="Large (18–36 in)">
+                        <option value="18"   {% if sel=='18'   %}selected{% endif %}>NPS 18   (18.000")</option>
+                        <option value="20"   {% if sel=='20'   %}selected{% endif %}>NPS 20   (20.000")</option>
+                        <option value="22"   {% if sel=='22'   %}selected{% endif %}>NPS 22   (22.000")</option>
+                        <option value="24"   {% if sel=='24'   %}selected{% endif %}>NPS 24   (24.000")</option>
+                        <option value="26"   {% if sel=='26'   %}selected{% endif %}>NPS 26   (26.000")</option>
+                        <option value="28"   {% if sel=='28'   %}selected{% endif %}>NPS 28   (28.000")</option>
+                        <option value="30"   {% if sel=='30'   %}selected{% endif %}>NPS 30   (30.000")</option>
+                        <option value="32"   {% if sel=='32'   %}selected{% endif %}>NPS 32   (32.000")</option>
+                        <option value="34"   {% if sel=='34'   %}selected{% endif %}>NPS 34   (34.000")</option>
+                        <option value="36"   {% if sel=='36'   %}selected{% endif %}>NPS 36   (36.000")</option>
+                    </optgroup>
+                    <optgroup label="Extra Large (38–60 in)">
+                        <option value="38"   {% if sel=='38'   %}selected{% endif %}>NPS 38   (38.000")</option>
+                        <option value="40"   {% if sel=='40'   %}selected{% endif %}>NPS 40   (40.000")</option>
+                        <option value="42"   {% if sel=='42'   %}selected{% endif %}>NPS 42   (42.000")</option>
+                        <option value="44"   {% if sel=='44'   %}selected{% endif %}>NPS 44   (44.000")</option>
+                        <option value="46"   {% if sel=='46'   %}selected{% endif %}>NPS 46   (46.000")</option>
+                        <option value="48"   {% if sel=='48'   %}selected{% endif %}>NPS 48   (48.000")</option>
+                        <option value="52"   {% if sel=='52'   %}selected{% endif %}>NPS 52   (52.000")</option>
+                        <option value="56"   {% if sel=='56'   %}selected{% endif %}>NPS 56   (56.000")</option>
+                        <option value="60"   {% if sel=='60'   %}selected{% endif %}>NPS 60   (60.000")</option>
+                    </optgroup>
                 </select>
             </div>
             <div>
@@ -205,7 +217,7 @@
                 <input type="number" name="min_p" value="{{ p.get('min_p') if p.get('min_p') is not none else 1850 }}" min="0">
             </div>
         </div>
-        <button type="submit" class="btn btn-green btn-full">Generate Analysis &#8594;</button>
+        <button type="submit" class="btn btn--green btn--full">Generate Analysis &#8594;</button>
     </form>
 </div>
 
@@ -221,6 +233,12 @@
     var form = document.getElementById('upload-form');
     var label = document.getElementById('drop-filename');
 
+    function sizeStr(bytes) {
+        return bytes >= 1048576
+            ? (bytes / 1048576).toFixed(1) + ' MB'
+            : (bytes / 1024).toFixed(0) + ' KB';
+    }
+
     zone.addEventListener('click', function() { input.click(); });
 
     zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('dragover'); });
@@ -231,14 +249,14 @@
         var files = e.dataTransfer.files;
         if (files.length) {
             input.files = files;
-            label.textContent = files[0].name;
+            label.textContent = files[0].name + '  (' + sizeStr(files[0].size) + ')';
             form.submit();
         }
     });
 
     input.addEventListener('change', function() {
         if (this.files.length) {
-            label.textContent = this.files[0].name;
+            label.textContent = this.files[0].name + '  (' + sizeStr(this.files[0].size) + ')';
             form.submit();
         }
     });
@@ -277,8 +295,12 @@ function onWtChange(sel) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) {
-                    document.getElementById('preview-container').innerHTML =
-                        '<div style="color:#c0392b; padding:10px;">Error: ' + data.error + '</div>';
+                    var errDiv = document.createElement('div');
+                    errDiv.style.cssText = 'color:var(--color-red-700); padding:10px;';
+                    errDiv.textContent = 'Error: ' + data.error;
+                    var container = document.getElementById('preview-container');
+                    container.innerHTML = '';
+                    container.appendChild(errDiv);
                     return;
                 }
                 // Update preview
@@ -317,7 +339,7 @@ function onWtChange(sel) {
             })
             .catch(function(err) {
                 document.getElementById('preview-container').innerHTML =
-                    '<div style="color:#c0392b; padding:10px;">Failed to load sheet preview.</div>';
+                    '<div style="color:var(--color-red-700); padding:10px;">Failed to load sheet preview.</div>';
             });
     });
 })();

@@ -4,58 +4,72 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Settings — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
-        .logo { max-width: 160px; margin-bottom: 24px; }
-        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
-        .subtitle { color: #7f8c8d; margin-bottom: 40px; font-size: 0.95em; }
-
-        .card { background: white; border-radius: 10px; padding: 28px 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; width: 100%; max-width: 700px; margin-bottom: 28px; }
-        .card.card-blue { border-top-color: #2980b9; }
-        .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; }
-
-        .item-list { list-style: none; margin-bottom: 18px; }
-        .item-list li { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.92em; color: #2c3e50; }
-        .item-list li:last-child { border-bottom: none; }
-        .item-list .empty { color: #bdc3c7; font-style: italic; font-size: 0.88em; padding: 8px 0; }
+        .page-logo { max-width: 160px; }
+        .item-list .empty { color: var(--color-slate-300); font-style: italic; font-size: 0.88em; padding: 8px 0; }
 
         .add-form { display: flex; gap: 8px; }
-        .add-form input { flex: 1; padding: 8px 11px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; font-family: inherit; }
-        .add-form input:focus { outline: none; border-color: #27ae60; }
+        .add-form input, .add-form select { flex: 1; padding: var(--lt-input-pad); border: 1px solid var(--lt-border); border-radius: var(--radius-sm); font-size: 0.9em; font-family: var(--font-family); background: white; color: var(--lt-text-primary); }
+        .add-form input:focus, .add-form select:focus { outline: none; border-color: var(--lt-focus-ring); }
 
-        .btn { display: inline-block; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; font-family: inherit; text-decoration: none; }
-        .btn:hover { opacity: 0.88; }
-        .btn-green { background: #27ae60; color: white; }
-        .btn-red { background: none; border: none; color: #bdc3c7; cursor: pointer; font-size: 1.1em; line-height: 1; padding: 2px 4px; }
-        .btn-red:hover { color: #e74c3c; }
+        .coming-soon { background: var(--color-slate-100); border-radius: var(--radius-md); padding: 16px; color: var(--color-slate-400); font-size: 0.88em; text-align: center; border: 1px dashed var(--color-slate-200); }
 
-        .back-link { color: #7f8c8d; font-size: 0.85em; text-decoration: none; margin-top: 4px; display: inline-block; }
-        .back-link:hover { color: #2c3e50; }
+        .edit-form { display:none; margin-top:8px; padding:10px; background:var(--color-slate-100); border-radius:var(--radius-md); gap:8px; flex-wrap:wrap; align-items:center; }
+        .edit-form label { display:block; font-size:var(--label-size); color:var(--lt-text-muted); text-transform:uppercase; letter-spacing:var(--label-spacing); margin-bottom:3px; font-weight:600; margin-top:6px; }
+        .edit-form label:first-child { margin-top:0; }
+        .edit-form input, .edit-form select { padding:6px 9px; border:1px solid var(--lt-border); border-radius:var(--radius-sm); font-size:0.85em; font-family:var(--font-family); width:100%; background:white; color:var(--lt-text-primary); }
+        .edit-form input:focus, .edit-form select:focus { outline:none; border-color:var(--color-blue-700); }
 
-        .coming-soon { background: #f8f9fa; border-radius: 6px; padding: 16px; color: #95a5a6; font-size: 0.88em; text-align: center; border: 1px dashed #dee2e6; }
-        .edit-form { display:none; margin-top:8px; padding:10px; background:#f8f9fa; border-radius:6px; gap:8px; flex-wrap:wrap; align-items:center; }
-        .edit-form input, .edit-form select { padding:6px 9px; border:1px solid #ddd; border-radius:4px; font-size:0.85em; font-family:inherit; }
-        .edit-form input:focus, .edit-form select:focus { outline:none; border-color:#2980b9; }
-        .btn-edit { background:none; border:none; color:#bdc3c7; cursor:pointer; font-size:0.85em; padding:2px 6px; }
-        .btn-edit:hover { color:#2980b9; }
-        @media (max-width: 600px) { body { padding: 20px 12px; padding-top: 50px; } }
+        .btn-ghost-delete { background:none; border:none; color:var(--color-slate-300); cursor:pointer; font-size:1.1em; line-height:1; padding:2px 4px; }
+        .btn-ghost-delete:hover { color:var(--color-red-600); }
+        .btn-ghost-edit { background:none; border:none; color:var(--color-slate-300); cursor:pointer; font-size:0.85em; padding:2px 6px; }
+        .btn-ghost-edit:hover { color:var(--color-blue-700); }
+
+        @media (max-width: 600px) { body.page-light { padding-top: 50px; } }
     </style>
 </head>
-<body>
+<body class="page-light">
 
-<div style="position:fixed; top:10px; right:10px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08); max-width:calc(100vw - 20px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+<button class="lt-menu-toggle" onclick="toggleLtNav()" aria-label="Open menu">&#9776;</button>
+<div class="lt-nav-backdrop" id="lt-nav-backdrop" onclick="toggleLtNav()"></div>
+<div class="lt-nav-drawer" id="lt-nav-drawer">
+    <div class="lt-nav-drawer-header">
+        <a href="/"><img src="/static/peslogo.png" alt="PES Logo"></a>
+        <div class="nav-user">{{ session.user.name or session.user.email }}</div>
+    </div>
+    <div class="lt-nav-drawer-links">
+        <a href="/">&#8962; Home</a>
+        <a href="/logout" class="link-signout">&#8594; Sign out</a>
+    </div>
+</div>
+<script>
+function toggleLtNav() {
+    document.getElementById('lt-nav-drawer').classList.toggle('open');
+    document.getElementById('lt-nav-backdrop').classList.toggle('active');
+}
+</script>
+
+<div class="user-chip">
     {{ session.user.name or session.user.email }}
     &nbsp;·&nbsp;
-    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+    <a href="/logout" class="link-signout">Sign out</a>
 </div>
 
-<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="logo"></a>
-<h1>Settings</h1>
-<p class="subtitle">Manage companies, portfolios, and application configuration</p>
+<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="page-logo"></a>
+<h1 class="page-title">Settings</h1>
+<p class="page-subtitle" style="margin-bottom:0;">Manage companies, portfolios, and application configuration</p>
+
+<nav class="section-nav">
+    <a href="#companies">Companies</a>
+    <a href="#portfolios">Portfolios</a>
+    <a href="#oauth">Auth</a>
+    <a href="#users">Users</a>
+    {% if dev_mode %}<a href="#docs">Docs</a>{% endif %}
+</nav>
 
 <!-- Companies -->
-<div class="card">
+<div class="lt-card" id="companies">
     <h2>Owner Companies</h2>
     <ul class="item-list">
         {% for company in companies %}
@@ -63,7 +77,7 @@
             <span>{{ company }}</span>
             <form method="POST" action="/settings/company/delete" onsubmit="return confirm('Remove ' + {{ company|tojson }} + ' from the list?')">
                 <input type="hidden" name="name" value="{{ company }}">
-                <button type="submit" class="btn-red" title="Remove">&#x2715;</button>
+                <button type="submit" class="btn-ghost-delete" title="Remove">&#x2715;</button>
             </form>
         </li>
         {% else %}
@@ -72,12 +86,12 @@
     </ul>
     <form method="POST" action="/settings/company/add" class="add-form">
         <input type="text" name="name" placeholder="Company name…" required>
-        <button type="submit" class="btn btn-green">+ Add</button>
+        <button type="submit" class="btn btn--green">+ Add</button>
     </form>
 </div>
 
 <!-- Portfolios -->
-<div class="card card-blue">
+<div class="lt-card lt-card--blue" id="portfolios">
     <h2>Portfolios</h2>
 
     {% set ns = namespace(grouped={}) %}
@@ -90,16 +104,16 @@
     {% if ns.grouped %}
     {% for co, pfs in ns.grouped.items() %}
     <div style="margin-bottom:16px;">
-        <div style="font-size:0.75em; text-transform:uppercase; letter-spacing:0.5px; color:#2980b9; font-weight:700; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #eaf3fb;">{{ co }}</div>
+        <div style="font-size:0.75em; text-transform:uppercase; letter-spacing:0.5px; color:var(--color-blue-700); font-weight:700; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #eaf3fb;">{{ co }}</div>
         <ul class="item-list" style="margin-bottom:0;">
             {% for pf in pfs %}
             <li style="flex-direction:column; align-items:stretch;">
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                     <span>{{ pf.name }}</span>
                     <div style="display:flex; gap:4px;">
-                        <button type="button" class="btn-edit" onclick="toggleEdit('{{ pf.id }}')">&#9998; Edit</button>
+                        <button type="button" class="btn-ghost-edit" onclick="toggleEdit('{{ pf.id }}')">&#9998; Edit</button>
                         <form method="POST" action="/portfolio/delete/{{ pf.id }}?next=settings" onsubmit="return confirm('Delete portfolio ' + {{ pf.name|tojson }} + '? Analyses will become uncategorized.')">
-                            <button type="submit" class="btn-red" title="Delete">&#x2715;</button>
+                            <button type="submit" class="btn-ghost-delete" title="Delete">&#x2715;</button>
                         </form>
                     </div>
                 </div>
@@ -112,8 +126,8 @@
                             <option value="{{ c }}" {% if pf.get('company') == c %}selected{% endif %}>{{ c }}</option>
                             {% endfor %}
                         </select>
-                        <button type="submit" class="btn btn-green" style="padding:6px 14px; font-size:0.85em;">Save</button>
-                        <button type="button" class="btn-edit" onclick="toggleEdit('{{ pf.id }}')">Cancel</button>
+                        <button type="submit" class="btn btn--green" style="padding:6px 14px; font-size:0.85em;">Save</button>
+                        <button type="button" class="btn-ghost-edit" onclick="toggleEdit('{{ pf.id }}')">Cancel</button>
                     </div>
                 </form>
             </li>
@@ -127,43 +141,43 @@
 
     <form method="POST" action="/portfolio/create" class="add-form" style="margin-top:12px; flex-wrap:wrap; gap:8px;">
         <input type="hidden" name="next" value="settings">
-        <select name="company" style="flex:1; min-width:160px; padding:8px 11px; border:1px solid #ddd; border-radius:4px; font-size:0.9em; font-family:inherit;">
+        <select name="company" style="flex:1; min-width:160px;">
             <option value="">— No company —</option>
             {% for c in companies %}
             <option value="{{ c }}">{{ c }}</option>
             {% endfor %}
         </select>
         <input type="text" name="name" placeholder="Portfolio name…" required style="flex:2; min-width:160px;">
-        <button type="submit" class="btn btn-green">+ Add</button>
+        <button type="submit" class="btn btn--green">+ Add</button>
     </form>
 </div>
 
 <!-- OAuth Providers -->
-<div class="card" id="oauth" style="border-top-color: #8e44ad;">
+<div class="lt-card lt-card--purple" id="oauth">
     <h2>Authentication Providers</h2>
 
     {% if oauth_providers %}
     {% for op in oauth_providers %}
-    <div style="margin-bottom:14px; padding:12px; background:#f8f9fa; border-radius:6px; border-left:4px solid {% if op.is_default %}#27ae60{% elif not op.enabled %}#bdc3c7{% else %}#8e44ad{% endif %};">
+    <div style="margin-bottom:14px; padding:12px; background:var(--color-slate-100); border-radius:var(--radius-md); border-left:4px solid {% if op.is_default %}var(--color-green-600){% elif not op.enabled %}var(--color-slate-300){% else %}var(--color-purple-600){% endif %};">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <span style="font-weight:600; color:#2c3e50;">
+            <span style="font-weight:600; color:var(--lt-text-primary);">
                 {{ op.name }}
-                {% if op.is_default %}<span style="font-size:0.72em; background:#27ae60; color:white; padding:2px 6px; border-radius:3px; margin-left:6px;">DEFAULT</span>{% endif %}
-                {% if not op.enabled %}<span style="font-size:0.72em; background:#bdc3c7; color:white; padding:2px 6px; border-radius:3px; margin-left:6px;">DISABLED</span>{% endif %}
+                {% if op.is_default %}<span style="font-size:0.72em; background:var(--color-green-600); color:white; padding:2px 6px; border-radius:3px; margin-left:6px;">DEFAULT</span>{% endif %}
+                {% if not op.enabled %}<span style="font-size:0.72em; background:var(--color-slate-400); color:white; padding:2px 6px; border-radius:3px; margin-left:6px;">DISABLED</span>{% endif %}
             </span>
             <div style="display:flex; gap:4px;">
-                <button type="button" class="btn-edit" onclick="toggleEdit('oauth-{{ op.id }}')">&#9998; Edit</button>
+                <button type="button" class="btn-ghost-edit" onclick="toggleEdit('oauth-{{ op.id }}')">&#9998; Edit</button>
                 {% if not op.is_default and op.enabled %}
                 <form method="POST" action="/settings/oauth/default/{{ op.id }}" style="display:inline;">
-                    <button type="submit" class="btn-edit" title="Set as default">&#9733;</button>
+                    <button type="submit" class="btn-ghost-edit" title="Set as default">&#9733;</button>
                 </form>
                 {% endif %}
                 <form method="POST" action="/settings/oauth/delete/{{ op.id }}" style="display:inline;" onsubmit="return confirm('Delete provider {{ op.name }}?')">
-                    <button type="submit" class="btn-red" title="Delete">&#x2715;</button>
+                    <button type="submit" class="btn-ghost-delete" title="Delete">&#x2715;</button>
                 </form>
             </div>
         </div>
-        <div style="font-size:0.8em; color:#7f8c8d;">
+        <div style="font-size:0.8em; color:var(--lt-text-muted);">
             <span>{{ op.provider_type|upper }}</span> &middot;
             <span>{{ op.issuer_url }}</span> &middot;
             <span>Client: {{ op.client_id[:12] }}...</span>
@@ -173,11 +187,11 @@
         <form method="POST" action="/settings/oauth/edit/{{ op.id }}" id="edit-oauth-{{ op.id }}" class="edit-form" style="display:none; flex-direction:column; margin-top:10px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                 <div>
-                    <label style="margin-top:0;">Name</label>
+                    <label>Name</label>
                     <input type="text" name="name" value="{{ op.name }}" required>
                 </div>
                 <div>
-                    <label style="margin-top:0;">Type</label>
+                    <label>Type</label>
                     <select name="provider_type" onchange="toggleOauthType(this, '{{ op.id }}')">
                         <option value="authentik" {% if op.provider_type == 'authentik' %}selected{% endif %}>Authentik</option>
                         <option value="oidc" {% if op.provider_type == 'oidc' %}selected{% endif %}>Generic OIDC</option>
@@ -216,33 +230,33 @@
                     <input type="text" name="groups_claim" value="{{ op.get('groups_claim', 'groups') }}" placeholder="groups">
                 </div>
                 <div style="grid-column:1/-1; display:flex; align-items:center; gap:8px; margin-top:4px;">
-                    <label style="margin:0; display:inline;">
+                    <label style="margin:0; display:inline; text-transform:none; font-size:0.88em; color:var(--lt-text-primary);">
                         <input type="checkbox" name="enabled" {% if op.enabled %}checked{% endif %}> Enabled
                     </label>
                 </div>
             </div>
             <div style="display:flex; gap:8px; margin-top:10px;">
-                <button type="submit" class="btn btn-green" style="padding:7px 18px; font-size:0.85em;">Save Changes</button>
-                <button type="button" class="btn-edit" onclick="toggleEdit('oauth-{{ op.id }}')">Cancel</button>
+                <button type="submit" class="btn btn--green" style="padding:7px 18px; font-size:0.85em;">Save Changes</button>
+                <button type="button" class="btn-ghost-edit" onclick="toggleEdit('oauth-{{ op.id }}')">Cancel</button>
             </div>
         </form>
     </div>
     {% endfor %}
     {% else %}
-    <p style="color:#bdc3c7; font-style:italic; font-size:0.88em; margin-bottom:14px;">No providers configured</p>
+    <p style="color:var(--color-slate-300); font-style:italic; font-size:0.88em; margin-bottom:14px;">No providers configured</p>
     {% endif %}
 
     <!-- Add Provider Form -->
     <details style="margin-top:12px;">
-        <summary style="cursor:pointer; font-size:0.88em; font-weight:600; color:#8e44ad;">+ Add Provider</summary>
-        <form method="POST" action="/settings/oauth/add" style="margin-top:12px; background:#faf8fd; padding:14px; border-radius:6px; border:1px solid #e8ddf0;">
+        <summary style="cursor:pointer; font-size:0.88em; font-weight:600; color:var(--color-purple-600);">+ Add Provider</summary>
+        <form method="POST" action="/settings/oauth/add" style="margin-top:12px; background:#faf8fd; padding:14px; border-radius:var(--radius-md); border:1px solid #e8ddf0;" class="edit-form" id="edit-add-provider" style="display:block; flex-direction:column;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                 <div>
-                    <label style="margin-top:0;">Name</label>
+                    <label>Name</label>
                     <input type="text" name="name" placeholder="e.g. Company SSO" required>
                 </div>
                 <div>
-                    <label style="margin-top:0;">Type</label>
+                    <label>Type</label>
                     <select name="provider_type" id="add-provider-type" onchange="toggleAddType()">
                         <option value="authentik">Authentik</option>
                         <option value="oidc">Generic OIDC</option>
@@ -281,15 +295,15 @@
                     <input type="text" name="groups_claim" value="groups" placeholder="groups">
                 </div>
             </div>
-            <button type="submit" class="btn btn-green" style="margin-top:12px; padding:8px 18px; font-size:0.88em; width:auto; display:inline-block;">Add Provider</button>
+            <button type="submit" class="btn btn--green" style="margin-top:12px; padding:8px 18px; font-size:0.88em; width:auto; display:inline-block;">Add Provider</button>
         </form>
     </details>
 </div>
 
 <!-- Users -->
-<div class="card" id="users" style="border-top-color: #e67e22;">
+<div class="lt-card lt-card--orange" id="users">
     <h2>Users &amp; Permissions</h2>
-    <p style="font-size:0.8em; color:#7f8c8d; margin-bottom:14px;">
+    <p style="font-size:0.8em; color:var(--lt-text-muted); margin-bottom:14px;">
         Users are imported automatically on login via OIDC groups.
         Required groups: <strong>hydro</strong> (standard) or <strong>hydro-admin</strong> (admin).
     </p>
@@ -297,11 +311,11 @@
     {% if users %}
     <table style="width:100%; border-collapse:collapse; font-size:0.85em;">
         <thead>
-            <tr style="border-bottom:2px solid #dee2e6;">
-                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">User</th>
-                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">Groups</th>
-                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">Role</th>
-                <th style="text-align:left; padding:8px; color:#7f8c8d; font-size:0.8em; text-transform:uppercase;">Last Login</th>
+            <tr style="border-bottom:2px solid var(--color-slate-200);">
+                <th style="text-align:left; padding:8px; color:var(--lt-text-muted); font-size:0.8em; text-transform:uppercase;">User</th>
+                <th style="text-align:left; padding:8px; color:var(--lt-text-muted); font-size:0.8em; text-transform:uppercase;">Groups</th>
+                <th style="text-align:left; padding:8px; color:var(--lt-text-muted); font-size:0.8em; text-transform:uppercase;">Role</th>
+                <th style="text-align:left; padding:8px; color:var(--lt-text-muted); font-size:0.8em; text-transform:uppercase;">Last Login</th>
                 <th style="padding:8px; width:120px;"></th>
             </tr>
         </thead>
@@ -310,33 +324,33 @@
             <tr style="border-bottom:1px solid #f0f0f0;">
                 <td style="padding:8px;">
                     <strong>{{ u.name or 'Unknown' }}</strong>
-                    <br><span style="font-size:0.85em; color:#7f8c8d;">{{ u.email }}</span>
+                    <br><span style="font-size:0.85em; color:var(--lt-text-muted);">{{ u.email }}</span>
                 </td>
                 <td style="padding:8px;">
                     {% for g in u.get('groups', []) %}
-                    <span style="display:inline-block; padding:2px 6px; background:{% if g == 'hydro-admin' %}#8e44ad{% elif g == 'hydro' %}#2980b9{% else %}#bdc3c7{% endif %}; color:white; border-radius:3px; font-size:0.75em; margin:1px;">{{ g }}</span>
+                    <span style="display:inline-block; padding:2px 6px; background:{% if g == 'hydro-admin' %}var(--color-purple-600){% elif g == 'hydro' %}var(--color-blue-700){% else %}var(--color-slate-400){% endif %}; color:white; border-radius:3px; font-size:0.75em; margin:1px;">{{ g }}</span>
                     {% endfor %}
-                    {% if not u.get('groups') %}<span style="color:#bdc3c7; font-size:0.85em;">none</span>{% endif %}
+                    {% if not u.get('groups') %}<span style="color:var(--color-slate-300); font-size:0.85em;">none</span>{% endif %}
                 </td>
                 <td style="padding:8px;">
                     <form method="POST" action="/settings/user/role" style="display:flex; gap:4px; align-items:center;">
                         <input type="hidden" name="sub" value="{{ u.sub }}">
-                        <select name="role" style="padding:4px 6px; font-size:0.85em; border:1px solid #ddd; border-radius:3px;" onchange="this.form.submit()">
+                        <select name="role" style="padding:4px 6px; font-size:0.85em; border:1px solid var(--lt-border); border-radius:3px;" onchange="this.form.submit()">
                             <option value="hydro" {% if u.role == 'hydro' %}selected{% endif %}>hydro</option>
                             <option value="hydro-admin" {% if u.role == 'hydro-admin' %}selected{% endif %}>hydro-admin</option>
                         </select>
-                        {% if u.get('role_locked') %}<span style="font-size:0.7em; color:#e67e22;" title="Role was manually set and won't be overwritten by OIDC groups on next login">&#128274;</span>{% endif %}
+                        {% if u.get('role_locked') %}<span style="font-size:0.7em; color:var(--color-orange-500);" title="Role was manually set and won't be overwritten by OIDC groups on next login">&#128274;</span>{% endif %}
                     </form>
                 </td>
-                <td style="padding:8px; font-size:0.85em; color:#7f8c8d;">{{ u.get('last_login', '') }}</td>
+                <td style="padding:8px; font-size:0.85em; color:var(--lt-text-muted);">{{ u.get('last_login', '') }}</td>
                 <td style="padding:8px; text-align:right;">
                     {% if u.sub != session.get('user', {}).get('sub') %}
                     <form method="POST" action="/settings/user/delete" onsubmit="return confirm('Remove user {{ u.name or u.email }}?')">
                         <input type="hidden" name="sub" value="{{ u.sub }}">
-                        <button type="submit" class="btn-red" title="Remove user">&#x2715;</button>
+                        <button type="submit" class="btn-ghost-delete" title="Remove user">&#x2715;</button>
                     </form>
                     {% else %}
-                    <span style="font-size:0.75em; color:#95a5a6;">you</span>
+                    <span style="font-size:0.75em; color:var(--color-slate-400);">you</span>
                     {% endif %}
                 </td>
             </tr>
@@ -344,15 +358,15 @@
         </tbody>
     </table>
     {% else %}
-    <p style="color:#bdc3c7; font-style:italic; font-size:0.88em;">No users have logged in yet</p>
+    <p style="color:var(--color-slate-300); font-style:italic; font-size:0.88em;">No users have logged in yet</p>
     {% endif %}
 </div>
 
 {% if dev_mode %}
 <!-- Reference Documentation (dev only) -->
-<div class="card" id="docs" style="border-top-color: #16a085;">
+<div class="lt-card lt-card--teal" id="docs">
     <h2>Reference Documentation</h2>
-    <p style="font-size:0.8em; color:#7f8c8d; margin-bottom:14px;">
+    <p style="font-size:0.8em; color:var(--lt-text-muted); margin-bottom:14px;">
         Upload files for Claude to reference when assisting with analyses.
         Accepted formats: PDF, DOCX, TXT, MD, XLSX, CSV &mdash; max 50 MB each.
     </p>
@@ -364,13 +378,13 @@
             <div>
                 <span style="font-weight:500;">{{ doc.original_name }}</span>
                 <br>
-                <span style="font-size:0.78em; color:#95a5a6;">
+                <span style="font-size:0.78em; color:var(--color-slate-400);">
                     {{ (doc.size / 1024)|int }} KB &nbsp;&middot;&nbsp; {{ doc.upload_date }} &nbsp;&middot;&nbsp; {{ doc.uploaded_by }}
                 </span>
             </div>
             <form method="POST" action="/settings/docs/delete" onsubmit="return confirm('Delete ' + {{ doc.original_name|tojson }} + '?')">
                 <input type="hidden" name="id" value="{{ doc.id }}">
-                <button type="submit" class="btn-red" title="Delete">&#x2715;</button>
+                <button type="submit" class="btn-ghost-delete" title="Delete">&#x2715;</button>
             </form>
         </li>
         {% endfor %}
@@ -381,8 +395,8 @@
 
     <form method="POST" action="/settings/docs/upload" enctype="multipart/form-data" class="add-form" style="align-items:center;">
         <input type="file" name="doc" accept=".pdf,.docx,.txt,.md,.xlsx,.csv"
-               style="flex:1; padding:6px; border:1px solid #ddd; border-radius:4px; font-size:0.88em; font-family:inherit; background:white;">
-        <button type="submit" class="btn btn-green" style="background:#16a085;">Upload</button>
+               style="flex:1; padding:6px; border:1px solid var(--lt-border); border-radius:var(--radius-sm); font-size:0.88em; font-family:var(--font-family); background:white;">
+        <button type="submit" class="btn btn--teal">Upload</button>
     </form>
 </div>
 {% endif %}
@@ -404,12 +418,27 @@
         document.getElementById('add-slug-field').style.display = isAuthentik ? '' : 'none';
         document.getElementById('add-discovery-field').style.display = isAuthentik ? 'none' : '';
     }
-    // Scroll to anchor if present
-    var anchor = window.location.hash.replace('#', '');
-    if (anchor) {
-        var el = document.getElementById(anchor);
-        if (el) el.scrollIntoView({behavior: 'smooth'});
-    }
+    // Scroll-spy for section nav
+    (function() {
+        var links = document.querySelectorAll('.section-nav a');
+        var sections = Array.from(links).map(function(a) {
+            return document.querySelector(a.getAttribute('href'));
+        }).filter(Boolean);
+        window.addEventListener('scroll', function() {
+            var scrollY = window.scrollY + 80;
+            var current = sections[0];
+            sections.forEach(function(s) { if (s && s.offsetTop <= scrollY) current = s; });
+            links.forEach(function(a) {
+                a.classList.toggle('active', a.getAttribute('href') === '#' + (current && current.id));
+            });
+        }, {passive: true});
+        // Scroll to anchor if present
+        var anchor = window.location.hash.replace('#', '');
+        if (anchor) {
+            var el = document.getElementById(anchor);
+            if (el) el.scrollIntoView({behavior: 'smooth'});
+        }
+    })();
 </script>
 </body>
 </html>

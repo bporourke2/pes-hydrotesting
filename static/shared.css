@@ -1,0 +1,371 @@
+/*
+ * shared.css — PES Hydrotest Tool
+ * Shared design tokens and component classes used across all templates.
+ * Two intentional themes:
+ *   Light (lt-*): setup-flow pages (welcome, settings, mapping, project_setup, login)
+ *   Dark  (dk-*): engineering-view pages (test_exec, rupture, pv, results, equipment)
+ */
+
+/* ── 1. CSS Variables ─────────────────────────────────────────────────────── */
+:root {
+  /* Palette tokens */
+  --color-green-600:  #27ae60;
+  --color-green-700:  #16a085;
+  --color-blue-700:   #2980b9;
+  --color-purple-600: #8e44ad;
+  --color-orange-500: #e67e22;
+  --color-red-600:    #e74c3c;
+  --color-red-700:    #c0392b;
+  --color-slate-800:  #2c3e50;
+  --color-slate-700:  #34495e;
+  --color-slate-600:  #455a64;
+  --color-slate-500:  #7f8c8d;
+  --color-slate-400:  #95a5a6;
+  --color-slate-300:  #bdc3c7;
+  --color-slate-200:  #dee2e6;
+  --color-slate-100:  #f8f9fa;
+  --color-slate-50:   #f4f7f6;
+
+  /* Light theme */
+  --lt-page-bg:      var(--color-slate-50);
+  --lt-card-bg:      #ffffff;
+  --lt-card-radius:  10px;
+  --lt-card-shadow:  0 2px 10px rgba(0,0,0,0.08);
+  --lt-card-accent:  var(--color-green-600);
+  --lt-text-primary: var(--color-slate-800);
+  --lt-text-muted:   var(--color-slate-500);
+  --lt-border:       #dddddd;
+  --lt-border-subtle:#eeeeee;
+  --lt-input-pad:    8px 11px;
+  --lt-focus-ring:   var(--color-green-600);
+
+  /* Dark theme */
+  --dk-page-bg:       #1a1a2e;
+  --dk-sidebar-bg:    var(--color-slate-800);
+  --dk-sidebar-width: 320px;  /* override per-page with local :root */
+  --dk-panel-bg:      #16213e;
+  --dk-input-bg:      var(--color-slate-700);
+  --dk-input-deep:    #0d1b2a;
+  --dk-border:        var(--color-slate-600);
+  --dk-text-primary:  #ecf0f1;
+  --dk-text-muted:    var(--color-slate-400);
+  --dk-text-dim:      var(--color-slate-300);
+  --dk-accent:        var(--color-green-700);  /* override per-page */
+  --dk-input-pad:     7px 9px;
+
+  /* Typography */
+  --font-family:  'Segoe UI', system-ui, sans-serif;
+  --font-mono:    'Courier New', Courier, monospace;
+  --label-size:   0.82em;
+  --label-spacing:0.5px;
+
+  /* Radius scale */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+
+  /* Button padding scale */
+  --btn-pad-sm: 5px 12px;
+  --btn-pad-md: 9px 20px;
+  --btn-pad-lg: 11px 24px;
+
+  /* Z-index ladder */
+  --z-user-chip: 200;
+  --z-backdrop:  450;
+  --z-sidebar:   500;
+  --z-toggle:    600;
+}
+
+/* ── 2. Reset & Base ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+body { font-family: var(--font-family); }
+a { text-decoration: none; }
+
+/* ── 3. Light page scaffold ───────────────────────────────────────────────── */
+body.page-light {
+  background: var(--lt-page-bg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px;
+}
+.page-logo     { max-width: 180px; margin-bottom: 28px; }
+.page-title    { color: var(--lt-text-primary); margin-bottom: 6px; font-size: 1.5em; }
+.page-subtitle { color: var(--lt-text-muted); margin-bottom: 36px; font-size: 0.95em; }
+
+/* ── 4. Light card ────────────────────────────────────────────────────────── */
+.lt-card {
+  background: var(--lt-card-bg);
+  border-radius: var(--lt-card-radius);
+  padding: 28px 32px;
+  box-shadow: var(--lt-card-shadow);
+  border-top: 4px solid var(--lt-card-accent);
+  width: 100%;
+  margin-bottom: 28px;
+}
+.lt-card h2 {
+  color: var(--lt-text-primary);
+  font-size: 1em;
+  text-transform: uppercase;
+  letter-spacing: var(--label-spacing);
+  margin-bottom: 18px;
+}
+.lt-card--blue   { border-top-color: var(--color-blue-700); }
+.lt-card--dark   { border-top-color: var(--color-slate-800); }
+.lt-card--purple { border-top-color: var(--color-purple-600); }
+.lt-card--red    { border-top-color: var(--color-red-600); }
+.lt-card--teal   { border-top-color: var(--color-green-700); }
+.lt-card--orange { border-top-color: var(--color-orange-500); }
+
+/* ── 5. User chip ─────────────────────────────────────────────────────────── */
+.user-chip {
+  position: fixed; top: 10px; right: 10px;
+  font-size: 0.82em; color: #555;
+  z-index: var(--z-user-chip);
+  background: rgba(244,247,246,0.92);
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  max-width: calc(100vw - 20px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.user-chip--dark {
+  top: 16px; right: 20px;
+  color: var(--dk-text-muted);
+  background: rgba(22,33,62,0.92);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.user-chip a { font-weight: 600; }
+.user-chip a.link-settings      { color: var(--color-purple-600); }
+.user-chip a.link-settings-teal { color: var(--color-green-700); }
+.user-chip a.link-signout       { color: var(--color-red-600); }
+
+/* ── 6. Button system ─────────────────────────────────────────────────────── */
+.btn {
+  display: inline-block;
+  padding: var(--btn-pad-md);
+  border: none; border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9em; font-weight: 600; font-family: var(--font-family);
+  text-decoration: none; line-height: 1.4;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.88; }
+.btn--sm   { padding: var(--btn-pad-sm); font-size: 0.8em; }
+.btn--lg   { padding: var(--btn-pad-lg); font-size: 0.95em; }
+.btn--full { display: block; width: 100%; text-align: center; }
+.btn--green  { background: var(--color-green-600);  color: white; }
+.btn--dark   { background: var(--color-slate-800);  color: white; }
+.btn--blue   { background: var(--color-blue-700);   color: white; }
+.btn--red    { background: var(--color-red-600);    color: white; }
+.btn--danger { background: var(--color-red-700);    color: white; }
+.btn--teal   { background: var(--color-green-700);  color: white; }
+.btn--purple { background: var(--color-purple-600); color: white; }
+.btn--muted  { background: var(--color-slate-600);  color: var(--dk-text-dim); }
+
+/* ── 7. Light-theme form controls ─────────────────────────────────────────── */
+.lt-label {
+  display: block;
+  font-size: var(--label-size); color: var(--lt-text-muted);
+  text-transform: uppercase; letter-spacing: var(--label-spacing);
+  margin-bottom: 5px; font-weight: 600;
+}
+.lt-label .req { color: var(--color-red-600); }
+.lt-input,
+.lt-select {
+  width: 100%; padding: var(--lt-input-pad);
+  border: 1px solid var(--lt-border); border-radius: var(--radius-sm);
+  font-size: 0.9em; font-family: var(--font-family);
+  background: white; color: var(--lt-text-primary);
+}
+.lt-input:focus,
+.lt-select:focus { outline: none; border-color: var(--lt-focus-ring); }
+
+/* ── 8. Dark sidebar chrome ───────────────────────────────────────────────── */
+.dk-sidebar {
+  width: var(--dk-sidebar-width);
+  background: var(--dk-sidebar-bg);
+  height: 100vh; position: fixed; left: 0; top: 0;
+  overflow-y: auto; display: flex; flex-direction: column;
+}
+.dk-sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--dk-border);
+  flex-shrink: 0;
+}
+.dk-sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+.dk-sidebar-header .logo-link img { max-width: 110px; display: block; }
+.dk-sidebar-header a { color: var(--dk-text-muted); font-size: 0.8em; }
+.dk-sidebar-header a:hover { color: white; }
+.dk-sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; color: var(--dk-text-primary); }
+.dk-sidebar-header p  { margin: 0; font-size: 0.78em; color: var(--dk-text-muted); }
+.dk-sidebar-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--dk-border);
+}
+.dk-sidebar-section h3 {
+  margin: 0 0 12px;
+  font-size: 0.78em; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--dk-text-muted);
+}
+.dk-sidebar-footer {
+  padding: 20px; margin-top: auto;
+  border-top: 1px solid var(--dk-border);
+}
+.param-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 3px 0; font-size: 0.84em;
+}
+.param-label { color: var(--dk-text-muted); }
+.param-val   { color: var(--dk-text-primary); font-weight: 600; }
+
+/* ── 9. Mobile sidebar toggle (dark pages) ────────────────────────────────── */
+.menu-toggle {
+  display: none; position: fixed; top: 12px; left: 12px;
+  z-index: var(--z-toggle);
+  background: var(--dk-sidebar-bg); border: 1px solid var(--dk-border);
+  border-radius: var(--radius-md); padding: 8px 12px;
+  cursor: pointer; color: var(--dk-text-primary);
+  font-size: 1.2em; line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.sidebar-backdrop {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: var(--z-backdrop);
+}
+.sidebar-backdrop.active { display: block; }
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .menu-toggle { display: block; }
+  .dk-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: var(--z-sidebar);
+  }
+  .dk-sidebar.open { transform: translateX(0); }
+  .dk-main { margin-left: 0 !important; }
+}
+
+/* ── 10. Dark-theme form controls ─────────────────────────────────────────── */
+.dk-label {
+  display: block; font-size: 0.82em; color: var(--dk-text-dim);
+  margin-bottom: 3px; margin-top: 10px;
+}
+.dk-label:first-child { margin-top: 0; }
+.dk-input,
+.dk-select {
+  width: 100%; padding: var(--dk-input-pad);
+  background: var(--dk-input-bg); border: 1px solid var(--dk-border);
+  color: white; border-radius: var(--radius-sm);
+  font-size: 0.88em; font-family: var(--font-family);
+}
+.dk-input:focus,
+.dk-select:focus { outline: none; border-color: var(--dk-accent); }
+
+/* ── 11. Misc shared ──────────────────────────────────────────────────────── */
+.back-link { color: var(--lt-text-muted); font-size: 0.85em; display: inline-block; }
+.back-link:hover { color: var(--lt-text-primary); }
+
+.item-list { list-style: none; margin-bottom: 18px; }
+.item-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 0; border-bottom: 1px solid var(--lt-border-subtle);
+  font-size: 0.92em; color: var(--lt-text-primary);
+}
+.item-list li:last-child { border-bottom: none; }
+
+.form-group-header {
+  font-size: 0.7em; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--dk-text-muted);
+  border-bottom: 1px solid var(--dk-border);
+  padding-bottom: 4px; margin-top: 8px; margin-bottom: 2px;
+}
+
+/* ── 12. UX components ────────────────────────────────────────────────────── */
+
+/* Settings section-jump nav */
+.section-nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--lt-page-bg);
+  border-bottom: 1px solid var(--color-slate-200);
+  display: flex; width: 100%; max-width: 700px;
+  margin-bottom: 24px; overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.section-nav a {
+  flex: 1; padding: 10px 8px; text-align: center;
+  font-size: 0.75em; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--lt-text-muted); background: white;
+  border-bottom: 3px solid transparent;
+  transition: all 0.15s;
+}
+.section-nav a:hover { color: var(--lt-text-primary); border-bottom-color: var(--color-slate-300); }
+.section-nav a.active { color: var(--lt-text-primary); border-bottom-color: var(--color-green-600); }
+
+/* Unsaved-changes banner (results.html) */
+.unsaved-indicator {
+  display: none; position: sticky; top: 0; z-index: 50;
+  padding: 6px 16px;
+  background: rgba(230,126,34,0.12);
+  border-bottom: 2px solid var(--color-orange-500);
+  color: var(--color-orange-500);
+  font-size: 0.82em; font-weight: 600; text-align: center;
+}
+.unsaved-indicator.visible { display: block; }
+
+/* ── 13. Light-theme hamburger nav drawer ─────────────────────────────────── */
+.lt-menu-toggle {
+  display: none;
+  position: fixed; top: 10px; left: 10px;
+  z-index: var(--z-toggle);
+  background: var(--lt-card-bg); border: 1px solid var(--lt-border);
+  border-radius: var(--radius-sm); padding: 7px 10px;
+  cursor: pointer; font-size: 1.1em; line-height: 1;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  color: var(--lt-text-primary);
+}
+.lt-nav-backdrop {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35); z-index: var(--z-backdrop);
+}
+.lt-nav-backdrop.active { display: block; }
+.lt-nav-drawer {
+  position: fixed; top: 0; left: 0;
+  width: 240px; height: 100vh;
+  background: white; z-index: var(--z-sidebar);
+  box-shadow: 2px 0 12px rgba(0,0,0,0.12);
+  display: flex; flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+.lt-nav-drawer.open { transform: translateX(0); }
+.lt-nav-drawer-header {
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--lt-border-subtle);
+}
+.lt-nav-drawer-header img { max-width: 120px; display: block; margin-bottom: 10px; }
+.lt-nav-drawer-header .nav-user { font-size: 0.82em; color: var(--lt-text-muted); }
+.lt-nav-drawer-links a {
+  display: block; padding: 11px 20px;
+  font-size: 0.9em; color: var(--lt-text-primary);
+  border-bottom: 1px solid var(--lt-border-subtle);
+  font-weight: 500;
+}
+.lt-nav-drawer-links a:hover { background: var(--lt-page-bg); }
+.lt-nav-drawer-links a.link-signout  { color: var(--color-red-600); }
+.lt-nav-drawer-links a.link-settings { color: var(--color-purple-600); }
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .lt-menu-toggle { display: block; }
+  body.page-light { padding-top: 54px; }
+  /* Nav drawer replaces user chip on mobile */
+  body.page-light .user-chip { display: none; }
+}
+
+/* Mobile padding reduction */
+@media (max-width: 600px) {
+  body.page-light { padding: 20px 12px; padding-top: 54px; }
+}

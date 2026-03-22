@@ -5,38 +5,39 @@
     <title>Print Hydrotest Analysis</title>
     <!-- Static plots only — no Plotly JS needed -->
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 20px; }
         h1 { text-align: center; }
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
         .card { background: white; padding: 15px; border: 1px solid #ddd; }
         .card h4 { margin: 0; font-size: 0.75em; text-transform: uppercase; }
         .card p { margin: 8px 0 0; font-size: 1.2em; font-weight: bold; }
-        .plot-box { margin-bottom: 20px; text-align: center; }
+        .plot-box { text-align: center; }
         table { width: 100%; border-collapse: collapse; }
         th { background: #f8f9fa; padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6; }
         td { padding: 10px; text-align: right; border-bottom: 1px solid #eee; }
         .warning { color: #e74c3c; font-weight: bold; }
         .controls-grid { display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; }
         .controls-grid li { flex: 1 1 200px; padding: 10px; box-sizing: border-box; }
-        
-        /* Print-specific styles */
+
+        /* Always landscape — charts fill the long edge */
+        @page {
+            {% if paper_size == '11x17' %}size: tabloid landscape;
+            {% else %}size: letter landscape;{% endif %}
+            margin: 0.5in;
+        }
+
         @media print {
-            .first-page { page-break-after: always; }
             table { page-break-inside: auto; }
             tr { page-break-inside: avoid; page-break-after: auto; }
             thead { display: table-header-group; }
             tfoot { display: table-footer-group; }
             body { margin: 0; padding: 0; }
-        }
-        
-        /* Dynamic @page based on params */
-        @page {
-            {% if paper_size == '8.5x11' %}
-                size: letter {{ orientation }};
-            {% elif paper_size == '11x17' %}
-                size: tabloid {{ orientation }};
-            {% endif %}
-            margin: 0.5in;
+            /* Keep headings attached to the content that follows them */
+            h2 { page-break-after: avoid; break-after: avoid; }
+            /* Keep stats cards together with the Analysis Results heading */
+            .stats-grid { page-break-inside: avoid; break-inside: avoid; }
+            .plot-box { page-break-before: always; break-before: page; }
+            .table-pages { page-break-before: always; break-before: page; }
         }
     </style>
 </head>
@@ -134,15 +135,14 @@
         </div>
         {% endif %}
 
-        <h2>Pressure Profile</h2>
-        <div class="plot-box">
-            <img src="data:image/png;base64,{{ plot1 }}" alt="Pressure Profile" style="max-width: 100%;">
-        </div>
+    </div>
 
-        <h2>Filling Profile</h2>
-        <div class="plot-box">
-            <img src="data:image/png;base64,{{ plot2 }}" alt="Filling Profile" style="max-width: 100%;">
-        </div>
+    <div class="plot-box">
+        <img src="data:image/png;base64,{{ plot1 }}" alt="Pressure Profile" style="max-width: 100%;">
+    </div>
+
+    <div class="plot-box">
+        <img src="data:image/png;base64,{{ plot2 }}" alt="Filling Profile" style="max-width: 100%;">
     </div>
 
     <div class="table-pages">

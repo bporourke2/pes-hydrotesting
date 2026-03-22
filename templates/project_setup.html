@@ -4,67 +4,70 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Project Setup — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/shared.css">
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/tooltips.js" defer></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
-        .logo { max-width: 180px; margin-bottom: 28px; }
-        h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.5em; }
-        .subtitle { color: #7f8c8d; margin-bottom: 36px; font-size: 0.95em; }
-
-        .card { background: white; border-radius: 10px; padding: 28px 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid #27ae60; width: 100%; max-width: 860px; margin-bottom: 24px; }
-        .card.card-blue { border-top-color: #2c3e50; }
-        .card.card-purple { border-top-color: #8e44ad; }
-        .card h2 { color: #2c3e50; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; }
-
         .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
         .field-grid.three { grid-template-columns: repeat(3, 1fr); }
         .field-grid.one { grid-template-columns: 1fr; }
-        @media (max-width: 600px) {
-            .field-grid, .field-grid.three { grid-template-columns: 1fr; }
-            body { padding: 20px 12px; padding-top: 50px; }
-        }
 
-        label { display: block; font-size: 0.82em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; font-weight: 600; }
-        label .req { color: #e74c3c; }
+        label { display: block; font-size: var(--label-size); color: var(--lt-text-muted); text-transform: uppercase; letter-spacing: var(--label-spacing); margin-bottom: 5px; font-weight: 600; }
+        label .req { color: var(--color-red-600); }
         input[type="text"], input[type="email"], input[type="tel"], select {
-            width: 100%; padding: 9px 11px; border: 1px solid #ddd; border-radius: 4px;
-            font-size: 0.9em; font-family: inherit; background: white; color: #2c3e50;
+            width: 100%; padding: var(--lt-input-pad);
+            border: 1px solid var(--lt-border); border-radius: var(--radius-sm);
+            font-size: 0.9em; font-family: var(--font-family); background: white; color: var(--lt-text-primary);
         }
-        input:focus, select:focus { outline: none; border-color: #27ae60; }
-
-        .btn { display: inline-block; padding: 9px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; font-family: inherit; text-decoration: none; line-height: 1.4; transition: opacity 0.15s; }
-        .btn:hover { opacity: 0.88; }
-        .btn-green { background: #27ae60; color: white; }
-        .btn-full { width: 100%; display: block; text-align: center; padding: 12px; font-size: 1em; }
-
-        .back-link { color: #7f8c8d; font-size: 0.85em; text-decoration: none; margin-bottom: 20px; display: inline-block; }
-        .back-link:hover { color: #2c3e50; }
+        input:focus, select:focus { outline: none; border-color: var(--lt-focus-ring); }
 
         #new-portfolio-row { display: none; margin-top: 10px; }
-        .inline-note { font-size: 0.8em; color: #7f8c8d; margin-top: 4px; }
+        .inline-note { font-size: 0.8em; color: var(--lt-text-muted); margin-top: 4px; }
+
+        @media (max-width: 600px) {
+            .field-grid, .field-grid.three { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
-<body>
+<body class="page-light">
 
-<div style="position:fixed; top:10px; right:10px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08); max-width:calc(100vw - 20px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+<button class="lt-menu-toggle" onclick="toggleLtNav()" aria-label="Open menu">&#9776;</button>
+<div class="lt-nav-backdrop" id="lt-nav-backdrop" onclick="toggleLtNav()"></div>
+<div class="lt-nav-drawer" id="lt-nav-drawer">
+    <div class="lt-nav-drawer-header">
+        <a href="/"><img src="/static/peslogo.png" alt="PES Logo"></a>
+        <div class="nav-user">{{ session.user.name or session.user.email }}</div>
+    </div>
+    <div class="lt-nav-drawer-links">
+        <a href="/">&#8962; Home</a>
+        {% if user_is_admin %}<a href="/settings" class="link-settings">&#9881; Settings</a>{% endif %}
+        <a href="/logout" class="link-signout">&#8594; Sign out</a>
+    </div>
+</div>
+<script>
+function toggleLtNav() {
+    document.getElementById('lt-nav-drawer').classList.toggle('open');
+    document.getElementById('lt-nav-backdrop').classList.toggle('active');
+}
+</script>
+
+<div class="user-chip">
     {{ session.user.name or session.user.email }}
     {% if user_is_admin %}&nbsp;·&nbsp;
-    <a href="/settings" style="color:#8e44ad; text-decoration:none; font-weight:600;">Settings</a>{% endif %}
+    <a href="/settings" class="link-settings">Settings</a>{% endif %}
     &nbsp;·&nbsp;
-    <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+    <a href="/logout" class="link-signout">Sign out</a>
 </div>
 
-<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="logo"></a>
-<h1>{{ 'Edit Project Info' if next_page == 'results' else 'Project Setup' }}</h1>
-<p class="subtitle">{{ 'Update project details for this analysis' if next_page == 'results' else 'Enter project details before uploading survey data' }}</p>
+<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="page-logo"></a>
+<h1 class="page-title">{{ 'Edit Project Info' if next_page == 'results' else 'Project Setup' }}</h1>
+<p class="page-subtitle">{{ 'Update project details for this analysis' if next_page == 'results' else 'Enter project details before uploading survey data' }}</p>
 
 <form method="POST" action="/project_setup">
     <input type="hidden" name="next" value="{{ next_page }}">
 
     <!-- Project Info -->
-    <div class="card">
+    <div class="lt-card" style="max-width:860px;">
         <h2>Project Information</h2>
         <div class="field-grid">
             <div>
@@ -112,12 +115,13 @@
             </div>
             <div>
                 <label><span class="tt tt-dark" data-tt="A defined pipeline construction or testing section — typically corresponds to a continuous pipe run within a portfolio">Spread</span></label>
-                <select name="spread" id="spread-select" onchange="handleSpreadChange(this)">
+                <select id="spread-select" onchange="handleSpreadChange(this)">
                     <option value="">— Select portfolio first —</option>
                     <option value="__new__">+ New spread…</option>
                 </select>
-                <input type="text" name="spread_new" id="spread-new" placeholder="e.g. Spread 1"
+                <input type="text" id="spread-new" placeholder="e.g. Spread 1"
                     style="display:none; margin-top:8px;">
+                <input type="hidden" name="spread" id="spread-hidden">
             </div>
             <div>
                 <label>Testing Contractor</label>
@@ -127,7 +131,7 @@
     </div>
 
     <!-- Company Approver -->
-    <div class="card card-blue">
+    <div class="lt-card lt-card--dark" style="max-width:860px;">
         <h2>Company Approver</h2>
         <div class="field-grid three">
             <div>
@@ -146,7 +150,7 @@
     </div>
 
     <!-- Contractor Rep -->
-    <div class="card card-purple">
+    <div class="lt-card lt-card--purple" style="max-width:860px;">
         <h2>Contractor Representative</h2>
         <div class="field-grid three">
             <div>
@@ -164,7 +168,7 @@
         </div>
     </div>
 
-    <button type="submit" class="btn btn-green btn-full">
+    <button type="submit" class="btn btn--green btn--full" style="max-width:860px;">
         {% if next_page == 'results' %}Save Changes &#10003;{% else %}Continue to File Upload &#8594;{% endif %}
     </button>
 </form>
@@ -270,19 +274,14 @@
         populateSpreads(sel.value === '__new__' ? '' : sel.value);
     }
 
-    // On submit: resolve portfolio __new__ and merge spread value into the `spread` field name
+    // On submit: resolve portfolio __new__ and populate hidden spread field
     document.querySelector('form').addEventListener('submit', function(e) {
         var pfSel = document.getElementById('portfolio-select');
         if (pfSel.value === '__new__') pfSel.value = '';
-        // Set the hidden spread field from either select or text input
         var spreadSel = document.getElementById('spread-select');
         var spreadNew = document.getElementById('spread-new');
-        var finalSpread = spreadSel.value === '__new__' ? spreadNew.value : spreadSel.value;
-        // Rename spread-select to avoid conflict; set spread value via hidden input
-        spreadSel.name = '';
-        spreadNew.name = 'spread';
-        spreadNew.value = finalSpread;
-        spreadNew.style.display = 'none'; // prevent double submission visibility
+        var finalSpread = spreadSel.value === '__new__' ? spreadNew.value.trim() : spreadSel.value;
+        document.getElementById('spread-hidden').value = finalSpread;
     });
 
     window.addEventListener('DOMContentLoaded', function() {

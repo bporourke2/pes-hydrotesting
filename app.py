@@ -18,12 +18,16 @@ import tempfile
 import threading
 from datetime import datetime
 import pandas as pd
-from logic import PipelineApp, Section, parse_station, station_format, rupture_analysis, multi_rupture_analysis, temp_correction_factor, nps_to_od, od_to_nps, NPS_OD
+from logic import (PipelineApp, Section, parse_station, station_format,
+                   rupture_analysis, multi_rupture_analysis, temp_correction_factor,
+                   nps_to_od, od_to_nps, NPS_OD, GRADE_SMYS, build_wt_column)
 from db import (
     load_save as db_load_save, write_save, delete_save as db_delete_save,
     load_all_saves, clear_save_portfolio,
     load_portfolios, save_portfolios, upsert_portfolio, delete_portfolio,
+    delete_portfolio_cascade,
     load_companies, save_companies, add_company, remove_company,
+    atomic_save_mutation, MutationConflict, MutationError,
 )
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -54,7 +58,8 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 Compress(app)
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
+_ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins=_ALLOWED_ORIGIN)
 
 # Survey DataFrame cache: LRU with max 20 entries
 _df_cache = OrderedDict()
@@ -81,9 +86,10 @@ def get_sheet_names(file_path):
     """Return list of sheet names from an Excel file."""
     import openpyxl
     wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-    names = wb.sheetnames
-    wb.close()
-    return names
+    try:
+        return wb.sheetnames
+    finally:
+        wb.close()
 
 # --- Security helpers ---
 _SAVE_ID_RE = re.compile(r'^[a-f0-9]{8}$')
@@ -94,7 +100,14 @@ def validate_save_id(save_id):
         abort(400, 'Invalid save ID')
 
 def check_save_owner(data):
-    """Verify current user owns this save. Returns True if OK, aborts 403 if not."""
+    """Verify current user owns this save. Returns True if OK, aborts 403 if not.
+
+    NOTE: This function is intentionally not called in production routes.
+    The access model is portfolio-based (shared-access): any user with portfolio
+    access may view or modify any save in that portfolio. Individual ownership
+    enforcement is not required by the current design. If per-user write
+    isolation is needed in future, wire this into check_portfolio_access.
+    """
     owner_sub = data.get('owner_sub')
     if owner_sub and owner_sub != session.get('user', {}).get('sub'):
         abort(403, 'You do not have permission to access this analysis.')
@@ -163,6 +176,15 @@ def csrf_origin_check():
         if origin != expected:
             abort(403)
 
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    response.headers.setdefault('Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;")
+    return response
+
 @app.context_processor
 def inject_user_role():
     """Make user_is_admin available in all templates."""
@@ -171,10 +193,12 @@ def inject_user_role():
 # --- OAuth / OIDC (multi-provider) ---
 from oauth_config import (load_providers, get_provider, get_default_provider,
                           get_enabled_providers, migrate_from_env)
-from user_store import (upsert_user, get_user, is_admin, has_access,
-                        is_first_user, load_users, set_user_role, delete_user,
-                        get_user_portfolio_ids, set_user_portfolios,
-                        add_portfolio_to_user, remove_portfolio_from_all_users)
+from db import (
+    upsert_user, get_user, is_admin, has_access,
+    is_first_user, load_users, set_user_role, delete_user,
+    get_user_portfolio_ids, set_user_portfolios,
+    add_portfolio_to_user, remove_portfolio_from_all_users,
+)
 
 # Migrate legacy .env config on first run
 migrate_from_env()
@@ -205,12 +229,24 @@ def _reload_provider(provider):
     oauth._registry.pop(name, None)
     return _ensure_registered(provider)
 
+_providers_cache = None  # cached list of enabled providers; invalidated on add/edit/delete
+
+def _invalidate_providers_cache():
+    global _providers_cache
+    _providers_cache = None
+
+def _get_enabled_providers_cached():
+    global _providers_cache
+    if _providers_cache is None:
+        _providers_cache = get_enabled_providers()
+    return _providers_cache
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('user'):
             # Allow unauthenticated access if no providers configured
-            if not get_enabled_providers():
+            if not _get_enabled_providers_cached():
                 return redirect(url_for('oauth_setup'))
             session['next'] = request.url
             return redirect(url_for('login'))
@@ -223,8 +259,14 @@ def admin_required(f):
         if not session.get('user'):
             session['next'] = request.url
             return redirect(url_for('login'))
-        if session['user'].get('role') != 'hydro-admin':
+        # Refresh role from DB so a demoted user cannot retain admin access
+        # via a stale session cookie.
+        sub = session['user'].get('sub')
+        fresh_user = get_user(sub) if sub else None
+        if not fresh_user or fresh_user.get('role') != 'hydro-admin':
             abort(403, 'Admin access required.')
+        # Keep session in sync
+        session['user']['role'] = (fresh_user or {}).get('role', '')
         return f(*args, **kwargs)
     return decorated
 
@@ -302,15 +344,6 @@ def logout():
 
 app.jinja_env.filters['station_format'] = station_format
 
-def build_wt_column(df, col_map):
-    """Apply wall thickness to df['_wt'], supporting a constant value or a named column."""
-    wt_col = col_map.get('wt')
-    if wt_col == '__constant__':
-        df['_wt'] = float(col_map.get('wt_constant', 0.5))
-    else:
-        df['_wt'] = pd.to_numeric(df[wt_col], errors='coerce')
-    return df
-
 SAVES_DIR = os.path.join(_APP_DIR, 'saves')
 UPLOADS_DIR = os.path.join(_APP_DIR, 'uploads')
 DEMO_FILE = os.path.join(_APP_DIR, 'data', 'Testdata.xlsx')
@@ -333,15 +366,7 @@ def load_docs():
 def save_docs(docs):
     safe_write_json(os.path.join(DOCS_DIR, '_index.json'), docs)
 
-grade_smys = {
-    'B': 35000,
-    'X42': 42000,
-    'X52': 52000,
-    'X60': 60000,
-    'X65': 65000,
-    'X70': 70000,
-    'X80': 80000
-}
+grade_smys = GRADE_SMYS  # backward-compat alias; prefer GRADE_SMYS from logic
 
 @app.route('/')
 @login_required
@@ -422,9 +447,7 @@ def portfolio_edit(portfolio_id):
 @admin_required
 def portfolio_delete(portfolio_id):
     validate_save_id(portfolio_id)
-    delete_portfolio(portfolio_id)
-    clear_save_portfolio(portfolio_id)
-    remove_portfolio_from_all_users(portfolio_id)
+    delete_portfolio_cascade(portfolio_id)
     next_page = request.args.get('next', 'welcome')
     if next_page not in ('welcome', 'settings'):
         next_page = 'welcome'
@@ -438,7 +461,7 @@ def settings():
                            users=load_users(), docs=load_docs(), dev_mode=DEV_MODE)
 
 @app.route('/settings/company/add', methods=['POST'])
-@login_required
+@admin_required
 def company_add():
     name = request.form.get('name', '').strip()
     if name:
@@ -475,6 +498,7 @@ def oauth_add():
     }
     if data['name'] and data['client_id'] and data['client_secret']:
         p = add_provider(data)
+        _invalidate_providers_cache()
         log_action('OAUTH_ADD', f"{p['name']} ({p['id']})")
     return redirect(url_for('settings') + '#oauth')
 
@@ -494,6 +518,7 @@ def oauth_edit(provider_id):
     p = update_provider(provider_id, data)
     if p:
         _reload_provider(p)
+        _invalidate_providers_cache()
         log_action('OAUTH_EDIT', f"{p['name']} ({p['id']})")
     return redirect(url_for('settings') + '#oauth')
 
@@ -504,6 +529,7 @@ def oauth_delete(provider_id):
     if provider:
         delete_provider(provider_id)
         _registered_providers.discard(f"oauth_{provider_id}")
+        _invalidate_providers_cache()
         log_action('OAUTH_DELETE', f"{provider['name']} ({provider_id})")
     return redirect(url_for('settings') + '#oauth')
 
@@ -559,7 +585,7 @@ def docs_upload():
         'original_name': f.filename,
         'stored_name': stored_name,
         'uploaded_by': session.get('user', {}).get('email', 'unknown'),
-        'upload_date': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'upload_date': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
         'size': os.path.getsize(dest),
     })
     save_docs(docs)
@@ -733,7 +759,14 @@ def rupture_save(save_id):
     df = df[(df['_stn'] >= min(start, end)) & (df['_stn'] <= max(start, end))].copy()
     df = df.sort_values('_stn').reset_index(drop=True)
     od = get_od(params)
-    avg_wt = float(df['_wt'].mean())
+    # Length-weighted average WT (consistent with Section calc; arithmetic mean
+    # over-weights closely-spaced survey rows relative to long uniform segments)
+    _total_len = sum(abs(df.loc[i+1,'_stn'] - df.loc[i,'_stn']) for i in range(len(df)-1))
+    if _total_len > 0:
+        avg_wt = sum(abs(df.loc[i+1,'_stn'] - df.loc[i,'_stn']) * (df.loc[i,'_wt'] + df.loc[i+1,'_wt']) / 2
+                     for i in range(len(df)-1)) / _total_len
+    else:
+        avg_wt = float(df['_wt'].mean())
 
     stns_list = df['_stn'].tolist()
     elevs_list = df['_elev'].tolist()
@@ -804,27 +837,28 @@ def rupture_save(save_id):
         'results': entry_results,
     }
 
-    if 'rupture_analyses' not in data:
-        data['rupture_analyses'] = []
-
-    if ra_id:
-        replaced = False
-        for i, ra in enumerate(data['rupture_analyses']):
-            if ra.get('id') == ra_id:
-                # Preserve original save metadata; record the update
-                entry['saved_at'] = ra.get('saved_at', now_iso)
-                entry['saved_by'] = ra.get('saved_by', actor)
-                entry['modified_at'] = now_iso
-                entry['modified_by'] = actor
-                data['rupture_analyses'][i] = entry
-                replaced = True
-                break
-        if not replaced:
+    def mutate(data):
+        if 'rupture_analyses' not in data:
+            data['rupture_analyses'] = []
+        if ra_id:
+            replaced = False
+            for i, ra in enumerate(data['rupture_analyses']):
+                if ra.get('id') == ra_id:
+                    entry['saved_at'] = ra.get('saved_at', now_iso)
+                    entry['saved_by'] = ra.get('saved_by', actor)
+                    entry['modified_at'] = now_iso
+                    entry['modified_by'] = actor
+                    data['rupture_analyses'][i] = entry
+                    replaced = True
+                    break
+            if not replaced:
+                data['rupture_analyses'].append(entry)
+        else:
             data['rupture_analyses'].append(entry)
-    else:
-        data['rupture_analyses'].append(entry)
 
-    write_save(data)
+    result = atomic_save_mutation(save_id, mutate)
+    if result is None:
+        abort(404)
     log_action('RUPTURE_SAVE', f'save={save_id} label={label} mode={mode} stns={raw_stns}')
 
     from urllib.parse import quote
@@ -1171,6 +1205,50 @@ def sheet_preview():
     guesses = guess_columns(columns)
     return jsonify({'preview': preview_html, 'columns': columns, 'guesses': guesses})
 
+
+def _compute_section_display(sec, p):
+    """Compute display values shared by the results and print_view routes."""
+    atm = 14.7
+    v_ft3 = sec.volume_gal / 7.4805
+    compression_ratio = ((sec.prepack_psi + atm) / atm) - 1
+    added_ft3 = v_ft3 * compression_ratio * 1.2
+    prepack_minutes = math.ceil(added_ft3 / float(p['cfm'])) if p.get('cfm') and float(p['cfm']) > 0 else None
+    prepack_time = f"{prepack_minutes // 60}:{prepack_minutes % 60:02d}" if prepack_minutes is not None else None
+
+    vent_gallons = (
+        (sec.vent_gallons_total if hasattr(sec, 'vent_gallons_total') else sec.cum_gal_at_vent)
+        if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None
+        else sec.volume_gal
+    )
+
+    max_smys_row = sec.table_data.loc[sec.table_data['Percent_SMYS'].idxmax()]
+    max_smys_pct = max_smys_row['Percent_SMYS']
+    max_smys_station = max_smys_row['Station']
+
+    fill_minutes = math.ceil(sec.volume_gal / float(p['fill_gpm'])) if p.get('fill_gpm') and float(p['fill_gpm']) > 0 else None
+    fill_time = f"{fill_minutes // 60}:{fill_minutes % 60:02d}" if fill_minutes is not None else None
+    dewater_minutes = math.ceil(sec.volume_gal / float(p['dewater_gpm'])) if p.get('dewater_gpm') and float(p['dewater_gpm']) > 0 else None
+    dewater_time = f"{dewater_minutes // 60}:{dewater_minutes % 60:02d}" if dewater_minutes is not None else None
+    fill_time_first = fill_time_second = None
+    if hasattr(sec, 'fill_vol_second') and sec.fill_vol_second > 0 and p.get('fill_gpm') and float(p['fill_gpm']) > 0:
+        gpm = float(p['fill_gpm'])
+        m1 = math.ceil(sec.fill_vol_first / gpm)
+        m2 = math.ceil(sec.fill_vol_second / gpm)
+        fill_time_first  = f"{m1 // 60}:{m1 % 60:02d}"
+        fill_time_second = f"{m2 // 60}:{m2 % 60:02d}"
+
+    return dict(
+        prepack_time=prepack_time,
+        vent_gallons=vent_gallons,
+        max_smys_pct=max_smys_pct,
+        max_smys_station=max_smys_station,
+        fill_time=fill_time,
+        dewater_time=dewater_time,
+        fill_time_first=fill_time_first,
+        fill_time_second=fill_time_second,
+    )
+
+
 @app.route('/results', methods=['GET', 'POST'])
 @login_required
 def results():
@@ -1186,7 +1264,7 @@ def results():
                 if value and value != 'None':
                     try:
                         form_dict[key] = parse_station(value)
-                    except:
+                    except (ValueError, TypeError):
                         form_dict[key] = p.get(key)  # Fallback to session
                 else:
                     form_dict[key] = p.get(key)  # Fallback to session
@@ -1251,34 +1329,17 @@ def results():
         sheet = col_map.get('sheet', 0) if col_map else 0
         app_logic = PipelineApp(file_path, od=get_od(p), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, col_map)
-
-        # Moved prepack_time calc here
-        atm = 14.7
-        v_ft3 = sec.volume_gal / 7.4805
-        compression_ratio = ((sec.prepack_psi + atm) / atm) - 1
-        added_ft3 = v_ft3 * compression_ratio * 1.2  # Safety
-        prepack_minutes = math.ceil(added_ft3 / float(p['cfm'])) if p.get('cfm') and float(p['cfm']) > 0 else None
-        prepack_time = f"{prepack_minutes // 60}:{prepack_minutes % 60:02d}" if prepack_minutes is not None else None
-
-        # Calculate vent_gallons
-        vent_gallons = (sec.vent_gallons_total if hasattr(sec, 'vent_gallons_total') else sec.cum_gal_at_vent) if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
-
-        max_smys_row = sec.table_data.loc[sec.table_data['Percent_SMYS'].idxmax()]
-        max_smys_pct = max_smys_row['Percent_SMYS']
-        max_smys_station = max_smys_row['Station']
+        disp = _compute_section_display(sec, p)
+        prepack_time     = disp['prepack_time']
+        vent_gallons     = disp['vent_gallons']
+        max_smys_pct     = disp['max_smys_pct']
+        max_smys_station = disp['max_smys_station']
+        fill_time        = disp['fill_time']
+        dewater_time     = disp['dewater_time']
+        fill_time_first  = disp['fill_time_first']
+        fill_time_second = disp['fill_time_second']
 
         plot1, plot2 = app_logic.generate_plot(sec.table_data, min_test=float(p['min_p']) if p.get('min_p') else None, params=p, gauge_lower=sec.gauge_lower, gauge_upper=sec.gauge_upper, prepack_time=prepack_time, sec=sec, smys_threshold_pct=float(p.get('smys_threshold', 104)))
-        fill_minutes = math.ceil(sec.volume_gal / float(p['fill_gpm'])) if p.get('fill_gpm') and float(p['fill_gpm']) > 0 else None
-        fill_time = f"{fill_minutes // 60}:{fill_minutes % 60:02d}" if fill_minutes is not None else None
-        dewater_minutes = math.ceil(sec.volume_gal / float(p['dewater_gpm'])) if p.get('dewater_gpm') and float(p['dewater_gpm']) > 0 else None
-        dewater_time = f"{dewater_minutes // 60}:{dewater_minutes % 60:02d}" if dewater_minutes is not None else None
-        fill_time_first = fill_time_second = None
-        if hasattr(sec, 'fill_vol_second') and sec.fill_vol_second > 0 and p.get('fill_gpm') and float(p['fill_gpm']) > 0:
-            gpm = float(p['fill_gpm'])
-            m1 = math.ceil(sec.fill_vol_first / gpm)
-            m2 = math.ceil(sec.fill_vol_second / gpm)
-            fill_time_first  = f"{m1 // 60}:{m1 % 60:02d}"
-            fill_time_second = f"{m2 // 60}:{m2 % 60:02d}"
 
         portfolios = load_portfolios()
         save_id = session.get('save_id')
@@ -1299,7 +1360,7 @@ def results():
             if avg_wt and total_len > 0:
                 od = get_od(p)
                 pipe_id = od - 2 * avg_wt
-                C_water = 1 / 300000
+                C_water = 3.3e-6  # psi⁻¹, fresh water compressibility at ~60-68°F
                 unrestrained = float(p.get('unrestrained_length') or 0)
                 unrestrained = min(unrestrained, total_len)
                 restrained = total_len - unrestrained
@@ -1308,6 +1369,7 @@ def results():
                 slope = sec.volume_gal * (C_water + C_pipe)
                 squeeze_vol = round(slope * sec.target_gauge, 1)
         except Exception:
+            app.logger.exception('Squeeze volume calculation failed for save=%s', save_id)
             squeeze_vol = None
 
         save_error = request.args.get('save_error')
@@ -1321,7 +1383,7 @@ def results():
                 write_save(current_save)
                 socketio.emit('results_updated', {'save_id': save_id}, room=f'results_{save_id}')
             except Exception:
-                pass
+                app.logger.exception('Failed to persist param changes for save %s', save_id)
         return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, fill_time_first=fill_time_first, fill_time_second=fill_time_second, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
     except ValueError as ve:
         from markupsafe import escape
@@ -1415,7 +1477,7 @@ def save_analysis():
         'version': new_version,
         'name': p.get('analysis_name') or 'Untitled Analysis',
         'notes': p.get('notes', ''),
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'timestamp': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
         'portfolio_id': portfolio_id,
         'project_info': pi,
         'params': p,
@@ -1512,9 +1574,6 @@ def print_view():
     paper_size = request.args.get('paper_size', '8.5x11')
     if paper_size not in ('8.5x11', '11x17'):
         paper_size = '8.5x11'
-    orientation = request.args.get('orientation', 'portrait')
-    if orientation not in ('portrait', 'landscape'):
-        orientation = 'portrait'
 
     if not col_map or not p:
         return "No data available for printing."
@@ -1529,36 +1588,9 @@ def print_view():
         sheet = col_map.get('sheet', 0) if col_map else 0
         app_logic = PipelineApp(file_path, od=get_od(p), smys=smys, head_factor=head_factor, _df=get_cached_df(file_path, sheet=sheet))
         sec = Section(app_logic, p, col_map)
-
-        atm = 14.7
-        v_ft3 = sec.volume_gal / 7.4805
-        compression_ratio = ((sec.prepack_psi + atm) / atm) - 1
-        added_ft3 = v_ft3 * compression_ratio * 1.2
-        prepack_minutes = math.ceil(added_ft3 / float(p['cfm'])) if p.get('cfm') and float(p['cfm']) > 0 else None
-        prepack_time = f"{prepack_minutes // 60}:{prepack_minutes % 60:02d}" if prepack_minutes is not None else None
-
-        vent_gallons = (sec.vent_gallons_total if hasattr(sec, 'vent_gallons_total') else sec.cum_gal_at_vent) if hasattr(sec, 'cum_gal_at_vent') and sec.cum_gal_at_vent is not None else sec.volume_gal
-
-        max_smys_row = sec.table_data.loc[sec.table_data['Percent_SMYS'].idxmax()]
-        max_smys_pct = max_smys_row['Percent_SMYS']
-        max_smys_station = max_smys_row['Station']
-
-        plot1, plot2 = app_logic.generate_plot(sec.table_data, min_test=float(p['min_p']) if p.get('min_p') else None, params=p, gauge_lower=sec.gauge_lower, gauge_upper=sec.gauge_upper, prepack_time=prepack_time, sec=sec, static=True, smys_threshold_pct=float(p.get('smys_threshold', 104)))
-        fill_minutes = math.ceil(sec.volume_gal / float(p['fill_gpm'])) if p.get('fill_gpm') and float(p['fill_gpm']) > 0 else None
-        fill_time = f"{fill_minutes // 60}:{fill_minutes % 60:02d}" if fill_minutes is not None else None
-        dewater_minutes = math.ceil(sec.volume_gal / float(p['dewater_gpm'])) if p.get('dewater_gpm') and float(p['dewater_gpm']) > 0 else None
-        dewater_time = f"{dewater_minutes // 60}:{dewater_minutes % 60:02d}" if dewater_minutes is not None else None
-        fill_time_first = fill_time_second = None
-        if hasattr(sec, 'fill_vol_second') and sec.fill_vol_second > 0 and p.get('fill_gpm') and float(p['fill_gpm']) > 0:
-            gpm = float(p['fill_gpm'])
-            m1 = math.ceil(sec.fill_vol_first / gpm)
-            m2 = math.ceil(sec.fill_vol_second / gpm)
-            fill_time_first  = f"{m1 // 60}:{m1 % 60:02d}"
-            fill_time_second = f"{m2 // 60}:{m2 % 60:02d}"
-
-        min_bound_violations = sec.min_bound_violations
-        smys_bound_violations = sec.smys_bound_violations
-        return render_template('print.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, fill_time_first=fill_time_first, fill_time_second=fill_time_second, plot1=plot1, plot2=plot2, vent_gallons=vent_gallons, paper_size=paper_size, orientation=orientation, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations, pi=session.get('project_info', {}))
+        disp = _compute_section_display(sec, p)
+        plot1, plot2 = app_logic.generate_plot(sec.table_data, min_test=float(p['min_p']) if p.get('min_p') else None, params=p, gauge_lower=sec.gauge_lower, gauge_upper=sec.gauge_upper, prepack_time=disp['prepack_time'], sec=sec, static=True, smys_threshold_pct=float(p.get('smys_threshold', 104)))
+        return render_template('print.html', sec=sec, p=p, fill_time=disp['fill_time'], dew_time=disp['dewater_time'], prepack_time=disp['prepack_time'], fill_time_first=disp['fill_time_first'], fill_time_second=disp['fill_time_second'], plot1=plot1, plot2=plot2, vent_gallons=disp['vent_gallons'], paper_size=paper_size, max_smys_pct=disp['max_smys_pct'], max_smys_station=disp['max_smys_station'], min_bound_violations=sec.min_bound_violations, smys_bound_violations=sec.smys_bound_violations, pi=session.get('project_info', {}))
     except Exception as e:
         app.logger.exception("Print view error")
         return "Error generating print view. Check your inputs and try again.", 500
@@ -1601,6 +1633,7 @@ def pv_plot(save_id):
         gauge_lower = sec.gauge_lower
         gauge_upper = sec.gauge_upper
     except Exception:
+        app.logger.exception('Failed to compute section context for pv_plot save=%s', save_id)
         total_length_ft = None
         target_gauge = None
         gauge_lower = None
@@ -1630,24 +1663,26 @@ def pv_plot(save_id):
 @login_required
 def pv_save(save_id):
     validate_save_id(save_id)
-    # Limit request body size for PV data (5 MB max)
     if request.content_length and request.content_length > 5 * 1024 * 1024:
         return jsonify({'error': 'Payload too large'}), 413
-    data = db_load_save(save_id)
-    if data is None:
+    pre = db_load_save(save_id)
+    if pre is None:
         return jsonify({'error': 'Save not found'}), 404
-    check_portfolio_access(data)
+    check_portfolio_access(pre)
     payload = request.get_json()
     if payload is None:
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
-    # Basic schema validation
     if not isinstance(payload.get('readings'), list):
         return jsonify({'error': 'Missing or invalid readings array'}), 400
-    payload['last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M')
-    data['pv_data'] = payload
-    write_save(data)
+
+    payload['last_updated'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    def mutate(data):
+        data['pv_data'] = payload
+    result = atomic_save_mutation(save_id, mutate)
+    if result is None:
+        return jsonify({'error': 'Save not found'}), 404
     rows = len(payload.get('readings', []))
-    log_action('PV_SAVE', f'id={save_id} name="{data.get("name", "")}" rows={rows}')
+    log_action('PV_SAVE', f'id={save_id} name="{result.get("name", "")}" rows={rows}')
     return jsonify({'status': 'ok'})
 
 @app.route('/test/<save_id>')
@@ -1695,7 +1730,7 @@ def test_execution(save_id):
         high_elev = round(float(pts['Elevation'].max()), 1)
         low_elev  = round(float(pts['Elevation'].min()), 1)
     except Exception:
-        pass
+        app.logger.exception('Failed to compute section context for test_exec save=%s', save_id)
     gauge_elev = float(p['gauge_elevation']) if p.get('gauge_elevation') is not None else test_site_elev
     portfolios = load_portfolios()
     pf_name = next((pf['name'] for pf in portfolios if pf['id'] == data.get('portfolio_id')), None)
@@ -1729,23 +1764,33 @@ def test_execution(save_id):
 @login_required
 def test_save(save_id):
     validate_save_id(save_id)
-    data = db_load_save(save_id)
-    if data is None:
+    # Portfolio access check — fast, non-transactional pre-flight
+    pre = db_load_save(save_id)
+    if pre is None:
         return jsonify({'error': 'Save not found'}), 404
-    check_portfolio_access(data)
+    check_portfolio_access(pre)
     payload = request.get_json()
     if payload is None:
         return jsonify({'error': 'Invalid JSON'}), 400
     if not isinstance(payload.get('readings'), list):
         return jsonify({'error': 'Missing readings array'}), 400
-    if data.get('test_data', {}).get('status') in ('pass', 'fail'):
+
+    ts = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    try:
+        def mutate(data):
+            if data.get('test_data', {}).get('status') in ('pass', 'fail'):
+                raise MutationConflict('finalized')
+            payload['last_updated'] = ts
+            data['test_data'] = payload
+        data = atomic_save_mutation(save_id, mutate)
+    except MutationConflict:
         return jsonify({'error': 'Test is finalized', 'code': 'finalized'}), 409
-    payload['last_updated'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-    data['test_data'] = payload
-    write_save(data)
+
+    if data is None:
+        return jsonify({'error': 'Save not found'}), 404
     socketio.emit('readings_updated', {
         'readings':     payload.get('readings', []),
-        'last_updated': payload['last_updated'],
+        'last_updated': ts,
         'client_id':    payload.get('client_id'),
     }, room=f'test_{save_id}')
     log_action('TEST_SAVE', f'id={save_id} rows={len(payload["readings"])}')
@@ -1756,21 +1801,30 @@ def test_save(save_id):
 @login_required
 def test_finalize(save_id):
     validate_save_id(save_id)
-    data = db_load_save(save_id)
-    if data is None:
+    pre = db_load_save(save_id)
+    if pre is None:
         return jsonify({'error': 'Save not found'}), 404
-    check_portfolio_access(data)
+    check_portfolio_access(pre)
     payload = request.get_json()
     status = (payload or {}).get('status')
     if status not in ('pass', 'fail'):
         return jsonify({'error': 'Invalid status'}), 400
-    td = data.get('test_data', {})
-    if td.get('status') in ('pass', 'fail'):
+
+    ts = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    try:
+        def mutate(data):
+            td = data.get('test_data', {})
+            if td.get('status') in ('pass', 'fail'):
+                raise MutationConflict('already_finalized')
+            td['status'] = status
+            td['finalized_at'] = ts
+            data['test_data'] = td
+        result = atomic_save_mutation(save_id, mutate)
+    except MutationConflict:
         return jsonify({'error': 'Already finalized'}), 409
-    td['status'] = status
-    td['finalized_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-    data['test_data'] = td
-    write_save(data)
+
+    if result is None:
+        return jsonify({'error': 'Save not found'}), 404
     log_action('TEST_FINALIZE', f'id={save_id} status={status}')
     return jsonify({'status': 'ok'})
 
@@ -1828,6 +1882,9 @@ def test_retest(save_id):
         'readings': [],
         'test_date': None,
         'timezone': td.get('timezone'),
+        'install_date': td.get('install_date'),
+        'converted': td.get('converted'),
+        'cert_class': td.get('cert_class'),
         'last_updated': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     }
     write_save(data)
@@ -1895,25 +1952,39 @@ def equipment_setup(save_id):
 
 @socketio.on('join_test')
 def handle_join(data):
+    if not session.get('user') or not has_access(session['user']):
+        return
     save_id = data.get('save_id', '')
     validate_save_id(save_id)
+    db_data = db_load_save(save_id)
+    if db_data is None:
+        return
+    check_portfolio_access(db_data)
     join_room(f'test_{save_id}')
 
 @socketio.on('leave_test')
 def handle_leave(data):
     save_id = data.get('save_id', '')
-    leave_room(f'test_{save_id}')
+    if _SAVE_ID_RE.match(save_id):
+        leave_room(f'test_{save_id}')
 
 @socketio.on('join_results')
 def handle_join_results(data):
+    if not session.get('user') or not has_access(session['user']):
+        return
     save_id = data.get('save_id', '')
     validate_save_id(save_id)
+    db_data = db_load_save(save_id)
+    if db_data is None:
+        return
+    check_portfolio_access(db_data)
     join_room(f'results_{save_id}')
 
 @socketio.on('leave_results')
 def handle_leave_results(data):
     save_id = data.get('save_id', '')
-    leave_room(f'results_{save_id}')
+    if _SAVE_ID_RE.match(save_id):
+        leave_room(f'results_{save_id}')
 
 
 if __name__ == '__main__':
@@ -1927,4 +1998,4 @@ if __name__ == '__main__':
         DOCS_DIR = os.path.join(_APP_DIR, 'ref')
         logger.info('DEV MODE — reference docs: ref/')
 
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=os.environ.get('FLASK_DEBUG', '0') == '1')

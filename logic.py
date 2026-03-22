@@ -22,6 +22,28 @@ NPS_OD = {
     '52': 52.000, '56': 56.000, '60': 60.000, '65': 65.000,
 }
 
+# API 5L / ASME pipe grade → SMYS (psi)
+GRADE_SMYS = {
+    'B':   35000,
+    'X42': 42000,
+    'X52': 52000,
+    'X60': 60000,
+    'X65': 65000,
+    'X70': 70000,
+    'X80': 80000,
+}
+
+
+def build_wt_column(df, col_map):
+    """Apply wall thickness to df['_wt'], supporting a constant value or a named column."""
+    wt_col = col_map.get('wt')
+    if wt_col == '__constant__':
+        df['_wt'] = float(col_map.get('wt_constant', 0.5))
+    else:
+        df['_wt'] = pd.to_numeric(df[wt_col], errors='coerce')
+    return df
+
+
 def nps_to_od(nps):
     """Return OD (inches) for a given NPS designation per API 5L, or None."""
     return NPS_OD.get(str(nps))
@@ -57,7 +79,9 @@ def station_format(x):
         return f"{sign}{sta}+{rem:05.2f}"
 
 class PipelineApp:
-    def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04, head_factor=0.433, _df=None, sheet_name=0):
+    def __init__(self, survey_file, od=42, smys=70000, test_percent=1.04,
+                 head_factor=0.433,  # psi/ft — fresh water at 60°F; 0.4335 is more precise but 0.433 matches industry practice
+                 _df=None, sheet_name=0):
         self.od = od
         self.smys = smys
         self.test_percent = test_percent
@@ -248,9 +272,10 @@ class PipelineApp:
                     return
                 sta_range = max(df['Station'].max() - df['Station'].min(), 1)
                 sta_min = df['Station'].min()
-                tol = sta_range * 0.005
-                # Place labels above the plot (y > 1.0 in axes coordinates)
-                y_levels = [1.03, 1.13, 1.23, 1.33]
+                # Group markers whose text boxes would visually overlap (~12% of x-range)
+                tol = sta_range * 0.12
+                # Start above the title (y=1.0) with enough clearance
+                y_levels = [1.10, 1.22, 1.34, 1.46]
                 groups = []
                 for i in range(len(mkrs)):
                     placed = False
@@ -275,19 +300,22 @@ class PipelineApp:
                                 clip_on=False,
                                 bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.9, edgecolor=color, linewidth=0.5))
 
-            # Helper to apply station-format x-axis ticks
+            # Helper to apply station-format x-axis ticks — auto-scales to ~10 ticks
             def apply_station_xticks(ax):
                 sta_min = df['Station'].min()
                 sta_max = df['Station'].max()
-                step = 1000
-                tickvals = list(range(int(sta_min // step) * step, int(sta_max) + step, step))
+                sta_range = sta_max - sta_min
+                raw_step = sta_range / 10
+                magnitude = 10 ** math.floor(math.log10(max(raw_step, 1)))
+                step = next(n * magnitude for n in [1, 2, 5, 10] if sta_range / (n * magnitude) <= 12)
+                tickvals = list(range(int(sta_min // step) * step, int(sta_max) + step, int(step)))
                 tickvals = [t for t in tickvals if sta_min <= t <= sta_max]
                 ax.set_xticks(tickvals)
                 ax.set_xticklabels([station_format(t) for t in tickvals], rotation=45, ha='right', fontsize=8)
 
             # Static plots using matplotlib for print
             fig1, ax1 = plt.subplots(figsize=(12, 7))
-            fig1.subplots_adjust(bottom=0.22, top=0.68)
+            fig1.subplots_adjust(bottom=0.22, top=0.60)
             ax2 = ax1.twinx()
 
             ax1.plot(df['Station'], df['Elevation'], label='Elevation (ft)', color='#101820')
@@ -327,7 +355,7 @@ class PipelineApp:
 
             # Second static plot
             fig2, ax1 = plt.subplots(figsize=(12, 7))
-            fig2.subplots_adjust(bottom=0.22, top=0.68)
+            fig2.subplots_adjust(bottom=0.22, top=0.60)
             ax2 = ax1.twinx()
 
             ax1.plot(df['Station'], df['Elevation'], label='Elevation (ft)', color='#101820')
@@ -501,7 +529,7 @@ class Section:
         fill_site_val = params.get('fill_site')
         if fill_site_val is not None:
             fill_sta  = parse_station(fill_site_val)
-            fill_idx  = int((df_sorted['Station'] - fill_sta).abs().idxmin())
+            fill_idx  = int((df_sorted['Station'] - fill_sta).abs().values.argmin())
         else:
             fill_idx  = 0
         fill_cum = cum_from_start[fill_idx]
@@ -535,6 +563,7 @@ class Section:
             pd.DataFrame({'Station': right['Station'].values, 'Req_Back_P': right_bp.values}),
         ]).groupby('Station', as_index=False)['Req_Back_P'].max()
         df_sorted = df_sorted.merge(bp_df, on='Station', how='left')
+        df_sorted['Req_Back_P'] = df_sorted['Req_Back_P'].fillna(0.0)
 
         # ── Pre-pack: compute per arm, use the more demanding ───────────────
         atm = 14.7
@@ -722,7 +751,7 @@ def rupture_analysis(stations, elevations, rup_station, od, avg_wt, specific_wei
     # rupture while rup_elev <= elev <= threshold.
     first_peak_up = None
     in_above_zone = False
-    for i in range(rup_idx - 1, 0, -1):
+    for i in range(rup_idx - 1, -1, -1):
         if elevations[i] <= rup_elev:
             if in_above_zone:
                 break  # left the above-rup_elev zone — stop search
@@ -774,9 +803,8 @@ def rupture_analysis(stations, elevations, rup_station, od, avg_wt, specific_wei
         is_pocket = elevations[i] > rup_elev and elevations[i] > elevations[i - 1]
         dn_pocket_prog[i] = max(elevations[i] if is_pocket else 0.0, dn_pocket_prog[i - 1])
     downstream_pocket = 0.0
-    for i in range(rup_idx, n):
-        prev_prog = dn_pocket_prog[i - 1] if i > 0 else 0.0
-        if elevations[i] <= threshold and dn_pocket_prog[i] > prev_prog:
+    for i in range(max(rup_idx, 1), n):
+        if elevations[i] <= threshold and dn_pocket_prog[i] > dn_pocket_prog[i - 1]:
             downstream_pocket += abs(stations[i] - stations[i - 1])
 
     downstream_drained = downstream_main + downstream_pocket

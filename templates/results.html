@@ -4,25 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hydrotest Engineering Analysis</title>
+    <link rel="stylesheet" href="/static/shared.css">
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent-green: #27ae60; --text-light: #ecf0f1; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #f4f7f6; }
-        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); color: var(--text-light); padding: 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: scroll; box-sizing: border-box; }
-        .sidebar input, .sidebar textarea { width: 100%; padding: 8px; margin: 8px 0; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; font-family: inherit; }
-        .sidebar textarea { resize: vertical; min-height: 80px; }
-        .sidebar select { width: 100%; padding: 8px; margin: 8px 0; background: #34495e; border: 1px solid #455a64; color: white; border-radius: 4px; }
+        :root { --dk-sidebar-width: 320px; --dk-accent: #27ae60; }
+        body { margin: 0; display: flex; background: #f4f7f6; }
+        .dk-sidebar { width: var(--dk-sidebar-width); background: var(--dk-sidebar-bg); color: var(--dk-text-primary); padding: 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: scroll; box-sizing: border-box; }
+        .dk-sidebar input, .dk-sidebar textarea { width: 100%; padding: 8px; margin: 8px 0; background: var(--dk-input-bg); border: 1px solid var(--dk-border); color: white; border-radius: 4px; font-family: inherit; }
+        .dk-sidebar textarea { resize: vertical; min-height: 80px; }
+        .dk-sidebar select { width: 100%; padding: 8px; margin: 8px 0; background: var(--dk-input-bg); border: 1px solid var(--dk-border); color: white; border-radius: 4px; }
         .tab-bar { display: flex; background: #1a252f; }
-        .tab-bar button { flex: 1; padding: 12px; background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 3px solid transparent; transition: all 0.2s; }
-        .tab-bar button.active { color: var(--text-light); border-bottom-color: var(--accent-green); }
-        .tab-bar button:hover { color: var(--text-light); }
+        .tab-bar button { flex: 1; padding: 12px; background: none; border: none; color: var(--dk-text-muted); cursor: pointer; font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .tab-bar button.active { color: var(--dk-text-primary); border-bottom-color: var(--dk-accent); }
+        .tab-bar button:hover { color: var(--dk-text-primary); }
         .tab-content { padding: 20px 25px 25px; }
-        .content { margin-left: calc(var(--sidebar-width) + 20px); padding: 40px; flex: 1; min-width: 0; }
+        .content { margin-left: calc(var(--dk-sidebar-width) + 20px); padding: 40px; flex: 1; min-width: 0; }
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
-        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 4px solid var(--accent-green); }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 4px solid var(--color-green-600); }
         .card h4 { margin: 0; color: #7f8c8d; font-size: 0.75em; text-transform: uppercase; }
         .card p { margin: 8px 0 0; font-size: 1.2em; font-weight: bold; }
         .plot-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
@@ -45,24 +45,10 @@
         .saves-list a:hover { background: #3d566e !important; }
 
         /* ── Responsive ──────────────────────────────────────────────────── */
-        .menu-toggle {
-            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
-            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
-            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
-            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-        }
-        .sidebar-backdrop {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
-        }
-        .sidebar-backdrop.active { display: block; }
-
         @media (max-width: 1100px) {
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 1024px), (pointer: coarse) {
-            .menu-toggle { display: block; }
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; position: fixed; }
-            .sidebar.open { transform: translateX(0); }
             .content { margin-left: 0 !important; padding: 20px; padding-top: 58px; }
         }
         @media (max-width: 600px) {
@@ -78,11 +64,11 @@
         });
         {% endif %}
         function toggleSidebar() {
-            document.querySelector('.sidebar').classList.toggle('open');
+            document.querySelector('.dk-sidebar').classList.toggle('open');
             document.querySelector('.sidebar-backdrop').classList.toggle('active');
         }
         function closeSidebar() {
-            document.querySelector('.sidebar').classList.remove('open');
+            document.querySelector('.dk-sidebar').classList.remove('open');
             document.querySelector('.sidebar-backdrop').classList.remove('active');
         }
 
@@ -101,13 +87,20 @@
                 }
             }
         }
+        window.addEventListener('DOMContentLoaded', function() {
+            var bar = document.getElementById('unsaved-bar');
+            if (!bar) return;
+            var inputs = document.querySelectorAll('.dk-sidebar input, .dk-sidebar select, .dk-sidebar textarea');
+            inputs.forEach(function(el) {
+                el.addEventListener('change', function() { bar.classList.add('visible'); });
+            });
+        });
     </script>
 </head>
 <body>
 <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
 <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
-
-    <div class="sidebar">
+    <div class="dk-sidebar">
         <div class="tab-bar">
             <button class="active" onclick="showTab('controls', this)">Controls</button>
             <button onclick="showTab('document', this)">Document</button>
@@ -127,6 +120,7 @@
                     <label><span class="tt" data-tt="Nominal Pipe Size per API 5L — determines the outside diameter of the pipe">NPS</span></label>
                     <select name="nps" style="width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-size:0.88em; font-family:inherit; background:white; color:#2c3e50;">
                         {% set sel = p.get('nps', '42') %}
+                        <optgroup label="Small Bore (½–4 in)">
                         <option value="0.5"  {% if sel=='0.5'  %}selected{% endif %}>NPS 1/2   (0.840")</option>
                         <option value="0.75" {% if sel=='0.75' %}selected{% endif %}>NPS 3/4   (1.050")</option>
                         <option value="1"    {% if sel=='1'    %}selected{% endif %}>NPS 1     (1.315")</option>
@@ -137,6 +131,8 @@
                         <option value="3"    {% if sel=='3'    %}selected{% endif %}>NPS 3     (3.500")</option>
                         <option value="3.5"  {% if sel=='3.5'  %}selected{% endif %}>NPS 3-1/2 (4.000")</option>
                         <option value="4"    {% if sel=='4'    %}selected{% endif %}>NPS 4     (4.500")</option>
+                        </optgroup>
+                        <optgroup label="Medium (5–16 in)">
                         <option value="5"    {% if sel=='5'    %}selected{% endif %}>NPS 5     (5.563")</option>
                         <option value="6"    {% if sel=='6'    %}selected{% endif %}>NPS 6     (6.625")</option>
                         <option value="8"    {% if sel=='8'    %}selected{% endif %}>NPS 8     (8.625")</option>
@@ -144,6 +140,8 @@
                         <option value="12"   {% if sel=='12'   %}selected{% endif %}>NPS 12   (12.750")</option>
                         <option value="14"   {% if sel=='14'   %}selected{% endif %}>NPS 14   (14.000")</option>
                         <option value="16"   {% if sel=='16'   %}selected{% endif %}>NPS 16   (16.000")</option>
+                        </optgroup>
+                        <optgroup label="Large (18–36 in)">
                         <option value="18"   {% if sel=='18'   %}selected{% endif %}>NPS 18   (18.000")</option>
                         <option value="20"   {% if sel=='20'   %}selected{% endif %}>NPS 20   (20.000")</option>
                         <option value="22"   {% if sel=='22'   %}selected{% endif %}>NPS 22   (22.000")</option>
@@ -154,6 +152,8 @@
                         <option value="32"   {% if sel=='32'   %}selected{% endif %}>NPS 32   (32.000")</option>
                         <option value="34"   {% if sel=='34'   %}selected{% endif %}>NPS 34   (34.000")</option>
                         <option value="36"   {% if sel=='36'   %}selected{% endif %}>NPS 36   (36.000")</option>
+                        </optgroup>
+                        <optgroup label="Extra Large (38–60 in)">
                         <option value="38"   {% if sel=='38'   %}selected{% endif %}>NPS 38   (38.000")</option>
                         <option value="40"   {% if sel=='40'   %}selected{% endif %}>NPS 40   (40.000")</option>
                         <option value="42"   {% if sel=='42'   %}selected{% endif %}>NPS 42   (42.000")</option>
@@ -163,6 +163,7 @@
                         <option value="52"   {% if sel=='52'   %}selected{% endif %}>NPS 52   (52.000")</option>
                         <option value="56"   {% if sel=='56'   %}selected{% endif %}>NPS 56   (56.000")</option>
                         <option value="60"   {% if sel=='60'   %}selected{% endif %}>NPS 60   (60.000")</option>
+                        </optgroup>
                     </select>
                     <label><span class="tt" data-tt="API 5L material grade — sets the Specified Minimum Yield Strength (SMYS) used to calculate the maximum allowable test pressure">Pipe Grade</span></label>
                     <select name="grade">
@@ -227,7 +228,7 @@
                     <label><span class="tt" data-tt="Manually set the pressure at which trapped air vents are opened during filling, overriding the calculated value">Override Vent Threshold psig</span></label>
                     <input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None">
                 </div>
-                <button type="submit" style="width:100%; padding:10px; margin-top:15px; background:var(--accent-green); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
+                <button type="submit" style="width:100%; padding:10px; margin-top:15px; background:var(--color-green-600); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
             </form>
             {% if save_id %}
             <div style="margin-top:15px; padding-top:15px; border-top:1px solid #455a64;">
@@ -341,32 +342,28 @@
                 <p style="font-size:0.8em; color:#95a5a6; margin-bottom:10px;">Print Options</p>
                 <button style="padding:8px 16px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer; width:100%;" onclick="togglePrintOptions()">Print / Export PDF</button>
                 <div id="printOptions" style="display:none; margin-top:10px;">
-                    <form id="printForm" action="/print" method="GET" target="_blank">
+                    <form action="/print" method="GET" target="_blank">
                         <label>Paper Size</label>
                         <select name="paper_size" style="width:100%; padding:8px; margin:6px 0; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px;">
                             <option value="8.5x11">8.5x11 (Letter)</option>
                             <option value="11x17">11x17 (Tabloid)</option>
                         </select>
-                        <label>Orientation</label>
-                        <select name="orientation" style="width:100%; padding:8px; margin:6px 0; background:#34495e; border:1px solid #455a64; color:white; border-radius:4px;">
-                            <option value="portrait">Portrait</option>
-                            <option value="landscape">Landscape</option>
-                        </select>
-                        <button type="submit" style="width:100%; padding:8px; margin-top:8px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">Generate Print View</button>
+                        <button type="submit" style="width:100%; padding:8px; margin-top:8px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">Open Print View</button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
 
-    <div style="position:fixed; top:16px; right:20px; font-size:0.82em; color:#555; z-index:200; background:rgba(244,247,246,0.92); padding:4px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div class="user-chip">
         {{ session.user.name or session.user.email }}
         {% if user_is_admin %}&nbsp;·&nbsp;
-        <a href="/settings" style="color:#8e44ad; text-decoration:none; font-weight:600;">Settings</a>{% endif %}
+        <a href="/settings" class="link-settings">Settings</a>{% endif %}
         &nbsp;·&nbsp;
-        <a href="/logout" style="color:#e74c3c; text-decoration:none; font-weight:600;">Sign out</a>
+        <a href="/logout" class="link-signout">Sign out</a>
     </div>
 
+    <div class="unsaved-indicator" id="unsaved-bar">Unsaved changes — recalculate to update results</div>
     <div class="content">
         {% if restored_version %}
         <div style="background:#e67e22; color:white; padding:14px 20px; border-radius:6px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
@@ -576,12 +573,17 @@
 (function() {
     var SAVE_ID = {{ save_id | tojson }};
     var socket = io();
-    socket.emit('join_results', { save_id: SAVE_ID });
+    var redirecting = false;
+    // Re-join on every (re)connect so room membership survives transport drops
+    socket.on('connect', function() {
+        socket.emit('join_results', { save_id: SAVE_ID });
+    });
     window.addEventListener('beforeunload', function() {
         socket.emit('leave_results', { save_id: SAVE_ID });
     });
     socket.on('results_updated', function(data) {
-        if (data.save_id !== SAVE_ID) return;
+        if (data.save_id !== SAVE_ID || redirecting) return;
+        redirecting = true;  // guard against double-emit causing two navigations
         window.location.href = '/load/' + SAVE_ID;
     });
 })();

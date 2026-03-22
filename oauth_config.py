@@ -153,10 +153,13 @@ def migrate_from_env():
     if not client_id or not client_secret:
         return  # nothing to migrate
     app_slug = os.environ.get('AUTHENTIK_APP_SLUG', 'hydrotest')
+    issuer_url = os.environ.get('AUTHENTIK_ISSUER_URL', '')
+    if not issuer_url:
+        return  # issuer URL required — cannot migrate without it
     add_provider({
         'name': 'Authentik',
         'provider_type': 'authentik',
-        'issuer_url': 'https://auth.thebrendan.online',
+        'issuer_url': issuer_url,
         'client_id': client_id,
         'client_secret': client_secret,
         'app_slug': app_slug,

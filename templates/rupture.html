@@ -7,42 +7,42 @@
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/tooltips.js" defer></script>
     <script src="/static/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root { --sidebar-width: 320px; --primary-bg: #2c3e50; --accent: #e74c3c; --accent-green: #27ae60; --text-light: #ecf0f1; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: #1a1a2e; color: var(--text-light); min-height: 100vh; }
+        :root { --dk-sidebar-width: 320px; --dk-accent: #e74c3c; }
+        body { margin: 0; display: flex; background: #1a1a2e; color: var(--dk-text-primary); min-height: 100vh; }
 
-        .sidebar { width: var(--sidebar-width); background: var(--primary-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-header .logo-link { display: block; margin-bottom: 10px; }
-        .sidebar-header .logo-link img { max-width: 110px; display: block; }
-        .sidebar-header a { color: #95a5a6; text-decoration: none; font-size: 0.8em; }
-        .sidebar-header a:hover { color: white; }
-        .sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
-        .sidebar-header p { margin: 0; font-size: 0.78em; color: #95a5a6; }
-        .sidebar-section { padding: 16px 20px; border-bottom: 1px solid #455a64; }
-        .sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; }
+        .dk-sidebar { width: var(--dk-sidebar-width); background: var(--dk-sidebar-bg); height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; display: flex; flex-direction: column; }
+        .dk-sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+        .dk-sidebar-header .logo-link { display: block; margin-bottom: 10px; }
+        .dk-sidebar-header .logo-link img { max-width: 110px; display: block; }
+        .dk-sidebar-header a { color: var(--dk-text-muted); text-decoration: none; font-size: 0.8em; }
+        .dk-sidebar-header a:hover { color: white; }
+        .dk-sidebar-header h2 { margin: 6px 0 2px; font-size: 1em; }
+        .dk-sidebar-header p { margin: 0; font-size: 0.78em; color: var(--dk-text-muted); }
+        .dk-sidebar-section { padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+        .dk-sidebar-section h3 { margin: 0 0 12px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dk-text-muted); }
         label { display: block; font-size: 0.82em; color: #bdc3c7; margin-bottom: 3px; margin-top: 10px; }
         label:first-child { margin-top: 0; }
         input[type="text"], input[type="number"] {
-            width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64;
+            width: 100%; padding: 7px 9px; background: var(--dk-input-bg); border: 1px solid var(--dk-border);
             color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit;
         }
         select {
-            width: 100%; padding: 7px 9px; background: #34495e; border: 1px solid #455a64;
+            width: 100%; padding: 7px 9px; background: var(--dk-input-bg); border: 1px solid var(--dk-border);
             color: white; border-radius: 4px; font-size: 0.88em; font-family: inherit;
             appearance: none; -webkit-appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2395a5a6'/%3E%3C/svg%3E");
             background-repeat: no-repeat; background-position: right 10px center;
             padding-right: 28px; cursor: pointer;
         }
-        select option { background: #2c3e50; }
-        input:focus, select:focus { outline: none; border-color: var(--accent); }
+        select option { background: var(--dk-sidebar-bg); }
+        input:focus, select:focus { outline: none; border-color: var(--dk-accent); }
         .btn { display: block; width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; text-align: center; font-family: inherit; }
-        .btn-danger { background: var(--accent); color: white; }
-        .btn-back { background: #455a64; color: white; text-decoration: none; margin-top: 8px; }
-        .btn-save { background: var(--accent-green); color: white; }
-        .btn-muted { background: #455a64; color: white; }
+        .btn-danger { background: var(--dk-accent); color: white; }
+        .btn-back { background: var(--dk-border); color: white; text-decoration: none; margin-top: 8px; }
+        .btn-save { background: var(--color-green-600); color: white; }
+        .btn-muted { background: var(--dk-border); color: white; }
         .btn:hover { opacity: 0.88; }
         .saved-ra { padding: 8px 0; border-bottom: 1px solid #3d5166; }
         .saved-ra:last-child { border-bottom: none; }
@@ -65,7 +65,7 @@
         .hint { font-size: 0.75em; color: #7f8c8d; margin-top: 4px; }
         .param-row { display: flex; justify-content: space-between; font-size: 0.82em; padding: 4px 0; border-bottom: 1px solid #3d5166; }
         .param-row:last-child { border-bottom: none; }
-        .param-label { color: #95a5a6; }
+        .param-label { color: var(--dk-text-muted); }
         .param-val { color: white; font-weight: 600; text-align: right; }
 
         /* Station list */
@@ -74,10 +74,10 @@
         .stn-row input { flex: 1; margin: 0; }
         .stn-row .btn-remove { width: 28px; min-width: 28px; padding: 0; height: 28px; font-size: 1.1em; line-height: 28px; background: #c0392b; color: white; border: none; border-radius: 4px; cursor: pointer; text-align: center; flex-shrink: 0; }
         .stn-row .btn-remove:hover { opacity: 0.85; }
-        .btn-add-stn { background: none; border: 1px dashed #455a64; color: #95a5a6; font-size: 0.82em; padding: 6px; cursor: pointer; border-radius: 4px; width: 100%; font-family: inherit; margin-top: 2px; }
-        .btn-add-stn:hover { border-color: #27ae60; color: #27ae60; }
+        .btn-add-stn { background: none; border: 1px dashed var(--dk-border); color: var(--dk-text-muted); font-size: 0.82em; padding: 6px; cursor: pointer; border-radius: 4px; width: 100%; font-family: inherit; margin-top: 2px; }
+        .btn-add-stn:hover { border-color: var(--color-green-600); color: var(--color-green-600); }
 
-        .main { margin-left: var(--sidebar-width); flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+        .dk-main { margin-left: var(--dk-sidebar-width); flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
 
         .chart-box { background: #16213e; border-radius: 8px; padding: 20px; }
         .chart-box h3 { margin: 0 0 14px; font-size: 0.95em; color: #bdc3c7; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -85,7 +85,7 @@
 
         .results-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
         .result-card { background: #16213e; border-radius: 8px; padding: 18px 20px; }
-        .result-card h4 { margin: 0 0 14px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.6px; color: #95a5a6; }
+        .result-card h4 { margin: 0 0 14px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.6px; color: var(--dk-text-muted); }
         .vol-primary { font-size: 1.5em; font-weight: 700; margin-bottom: 4px; }
         .vol-secondary { font-size: 0.82em; color: #7f8c8d; }
         .released { color: #e74c3c; }
@@ -93,13 +93,13 @@
         .neutral { color: #3498db; }
 
         .stats-box { background: #16213e; border-radius: 8px; padding: 18px 20px; }
-        .stats-box h4 { margin: 0 0 14px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.6px; color: #95a5a6; }
+        .stats-box h4 { margin: 0 0 14px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.6px; color: var(--dk-text-muted); }
         .stat-row { display: flex; justify-content: space-between; font-size: 0.85em; padding: 6px 0; border-bottom: 1px solid #1a252f; }
         .stat-row:last-child { border-bottom: none; }
-        .stat-label { color: #95a5a6; }
+        .stat-label { color: var(--dk-text-muted); }
         .stat-val { font-weight: 600; font-family: monospace; }
 
-        .section-title { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.6px; color: #95a5a6; margin: 0 0 12px; }
+        .section-title { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.6px; color: var(--dk-text-muted); margin: 0 0 12px; }
 
         .per-rupture-grid { display: grid; gap: 12px; }
         .per-rupture-card { background: #1a2a3a; border-radius: 6px; padding: 14px 16px; border-left: 3px solid #e74c3c; }
@@ -113,26 +113,12 @@
         .empty-state p { font-size: 0.9em; }
 
         /* ── Responsive ──────────────────────────────────────────────────── */
-        .menu-toggle {
-            display: none; position: fixed; top: 12px; left: 12px; z-index: 600;
-            background: var(--primary-bg); border: 1px solid #455a64; border-radius: 6px;
-            padding: 8px 12px; cursor: pointer; color: var(--text-light); font-size: 1.2em;
-            line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-        }
-        .sidebar-backdrop {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 450;
-        }
-        .sidebar-backdrop.active { display: block; }
-
         @media (max-width: 1024px), (pointer: coarse) {
-            .menu-toggle { display: block; }
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 500; }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; padding: 16px; padding-top: 58px; }
+            .dk-main { margin-left: 0; padding: 16px; padding-top: 58px; }
             .results-grid { grid-template-columns: 1fr; }
         }
         @media (max-width: 600px) {
-            .main { padding: 10px; padding-top: 54px; }
+            .dk-main { padding: 10px; padding-top: 54px; }
             #rupture-chart { height: 260px; }
         }
     </style>
@@ -142,15 +128,15 @@
 <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Open menu">&#9776;</button>
 <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
 
-<div class="sidebar">
-    <div class="sidebar-header">
+<div class="dk-sidebar">
+    <div class="dk-sidebar-header">
         <a href="/" class="logo-link"><img src="/static/peslogo.png" alt="PES"></a>
         <a href="/load/{{ save_id }}">&#8592; Back to Analysis</a>
         <h2>Rupture Analysis</h2>
         <p>{{ save_name }}</p>
     </div>
 
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Rupture Station(s)</h3>
         <form method="POST" id="rup-form">
             <input type="hidden" name="ra_id" id="ra-id-input" value="{{ loaded_ra_id }}">
@@ -195,7 +181,7 @@
         <a href="/load/{{ save_id }}" class="btn btn-back">Cancel</a>
     </div>
 
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Pipe Properties</h3>
         {% if nps %}<div class="param-row"><span class="param-label">NPS</span><span class="param-val">{{ nps }}"</span></div>{% endif %}
         <div class="param-row"><span class="param-label"><span class="tt" data-tt="Outside Diameter per API 5L for the selected NPS — used to calculate pipe area and SMYS pressure limits">OD</span></span><span class="param-val">{{ "%.3f"|format(od) }}"</span></div>
@@ -204,7 +190,7 @@
     </div>
 
     {% if result %}
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Rupture Conditions</h3>
         <div class="param-row"><span class="param-label"><span class="tt" data-tt="Ground elevation at the rupture point — after a full-bore rupture, the fluid surface at the break settles to this elevation">Rupture Elevation</span></span><span class="param-val">{{ "%.1f"|format(result.rup_elev) }} ft</span></div>
         <div class="param-row"><span class="param-label"><span class="tt" data-tt="Atmospheric pressure in psi at the rupture elevation — approximately 14.7 psi at sea level, decreasing slightly with altitude">Atm Pressure</span></span><span class="param-val">{{ "%.2f"|format(result.atm_psi) }} psi</span></div>
@@ -212,7 +198,7 @@
         <div class="param-row"><span class="param-label"><span class="tt" data-tt="Elevation equal to rupture elevation plus atmospheric head — pipe above this stays full (retained); pipe between rupture elevation and this threshold partially drains">Atm Head Elevation</span></span><span class="param-val">{{ "%.1f"|format(result.threshold_elev) }} ft</span></div>
     </div>
     {% elif multi_result %}
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Multi-Rupture Summary</h3>
         {% for r in multi_result.per_rupture %}
         <div class="param-row">
@@ -224,7 +210,7 @@
     {% endif %}
 
     {% if result or multi_result %}
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         {% if loaded_ra_id %}
         <h3>Analysis Loaded</h3>
         <form method="POST" action="/rupture/{{ save_id }}/save">
@@ -261,7 +247,7 @@
     {% endif %}
 
     {% if rupture_analyses %}
-    <div class="sidebar-section">
+    <div class="dk-sidebar-section">
         <h3>Saved Analyses</h3>
         {% for ra in rupture_analyses | reverse %}
         <div class="saved-ra">
@@ -315,7 +301,7 @@
     {% endif %}
 </div>
 
-<div class="main">
+<div class="dk-main">
 
 {% if error %}
 <div class="error-box">&#9888; {{ error }}</div>
@@ -888,11 +874,11 @@
 })();
 
 function toggleSidebar() {
-    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.dk-sidebar').classList.toggle('open');
     document.querySelector('.sidebar-backdrop').classList.toggle('active');
 }
 function closeSidebar() {
-    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.dk-sidebar').classList.remove('open');
     document.querySelector('.sidebar-backdrop').classList.remove('active');
 }
 </script>
