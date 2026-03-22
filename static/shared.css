@@ -71,10 +71,10 @@
   --btn-pad-lg: 11px 24px;
 
   /* Z-index ladder */
-  --z-user-chip: 200;
-  --z-backdrop:  450;
-  --z-sidebar:   500;
-  --z-toggle:    600;
+  --z-user-chip: 2000;
+  --z-backdrop:  4500;
+  --z-sidebar:   5000;
+  --z-toggle:    6000;
 }
 
 /* ── 2. Reset & Base ──────────────────────────────────────────────────────── */
@@ -151,8 +151,10 @@ body.page-light {
   font-size: 0.9em; font-weight: 600; font-family: var(--font-family);
   text-decoration: none; line-height: 1.4;
   transition: opacity 0.15s;
+  min-height: 44px;
 }
 .btn:hover { opacity: 0.88; }
+.btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .btn--sm   { padding: var(--btn-pad-sm); font-size: 0.8em; }
 .btn--lg   { padding: var(--btn-pad-lg); font-size: 0.95em; }
 .btn--full { display: block; width: 100%; text-align: center; }
@@ -181,7 +183,11 @@ body.page-light {
   background: white; color: var(--lt-text-primary);
 }
 .lt-input:focus,
-.lt-select:focus { outline: none; border-color: var(--lt-focus-ring); }
+.lt-select:focus {
+  outline: 2px solid var(--lt-focus-ring);
+  outline-offset: 1px;
+  border-color: var(--lt-focus-ring);
+}
 
 /* ── 8. Dark sidebar chrome ───────────────────────────────────────────────── */
 .dk-sidebar {
@@ -231,6 +237,7 @@ body.page-light {
   font-size: 1.2em; line-height: 1;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
+.menu-toggle:focus-visible { outline: 2px solid var(--dk-accent); outline-offset: 2px; }
 .sidebar-backdrop {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,0.55); z-index: var(--z-backdrop);
@@ -262,7 +269,11 @@ body.page-light {
   font-size: 0.88em; font-family: var(--font-family);
 }
 .dk-input:focus,
-.dk-select:focus { outline: none; border-color: var(--dk-accent); }
+.dk-select:focus {
+  outline: 2px solid var(--dk-accent);
+  outline-offset: 1px;
+  border-color: var(--dk-accent);
+}
 
 /* ── 11. Misc shared ──────────────────────────────────────────────────────── */
 .back-link { color: var(--lt-text-muted); font-size: 0.85em; display: inline-block; }
@@ -327,6 +338,7 @@ body.page-light {
   box-shadow: 0 1px 4px rgba(0,0,0,0.1);
   color: var(--lt-text-primary);
 }
+.lt-menu-toggle:focus-visible { outline: 2px solid var(--lt-focus-ring); outline-offset: 2px; }
 .lt-nav-backdrop {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,0.35); z-index: var(--z-backdrop);

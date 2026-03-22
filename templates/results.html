@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/shared.css">
     <link rel="stylesheet" href="/static/tooltips.css">
     <script src="/static/plotly-2.35.2.min.js"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/socket.io.min.js"></script>
     <style>
         :root { --dk-sidebar-width: 320px; --dk-accent: #27ae60; }
         body { margin: 0; display: flex; background: #f4f7f6; }
@@ -15,7 +15,7 @@
         .dk-sidebar input, .dk-sidebar textarea { width: 100%; padding: 8px; margin: 8px 0; background: var(--dk-input-bg); border: 1px solid var(--dk-border); color: white; border-radius: 4px; font-family: inherit; }
         .dk-sidebar textarea { resize: vertical; min-height: 80px; }
         .dk-sidebar select { width: 100%; padding: 8px; margin: 8px 0; background: var(--dk-input-bg); border: 1px solid var(--dk-border); color: white; border-radius: 4px; }
-        .tab-bar { display: flex; background: #1a252f; }
+        .tab-bar { display: flex; background: #1a252f; position: sticky; top: 0; z-index: 10; flex-shrink: 0; }
         .tab-bar button { flex: 1; padding: 12px; background: none; border: none; color: var(--dk-text-muted); cursor: pointer; font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 3px solid transparent; transition: all 0.2s; }
         .tab-bar button.active { color: var(--dk-text-primary); border-bottom-color: var(--dk-accent); }
         .tab-bar button:hover { color: var(--dk-text-primary); }
@@ -27,10 +27,11 @@
         .card p { margin: 8px 0 0; font-size: 1.2em; font-weight: bold; }
         .plot-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
         .plot-box hr { border: 1px solid #ddd; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        .table-wrap { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        table { width: 100%; border-collapse: collapse; background: white; }
         /* Suppress CSS tooltips inside th — overflow:hidden clips them; portal JS handles it instead */
         table th .tt::before, table th .tt::after { display: none !important; }
-        th { background: #f8f9fa; padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6; cursor: pointer; user-select: none; white-space: nowrap; }
+        th { background: #f8f9fa; padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6; cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; z-index: 2500; }
         th:hover { background: #e9ecef; }
         th.sort-asc::after { content: ' ▲'; font-size: 0.75em; }
         th.sort-desc::after { content: ' ▼'; font-size: 0.75em; }
@@ -38,7 +39,7 @@
         .warning { color: #e74c3c; font-weight: bold; }
         .sidebar-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
         label { display: block; font-size: 0.9em; margin-bottom: 4px; }
-        .form-group-header { grid-column: 1 / -1; font-size: 0.7em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #95a5a6; border-bottom: 1px solid #455a64; padding-bottom: 4px; margin-top: 6px; }
+        .form-group-header { grid-column: 1 / -1; font-size: 0.72em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #ecf0f1; background: rgba(255,255,255,0.07); border-left: 3px solid var(--dk-accent); padding: 5px 8px; margin-top: 10px; margin-left: -20px; margin-right: -20px; }
         .save-status { font-size: 0.8em; color: #27ae60; margin-top: 8px; text-align: center; }
         .doc-meta { background: #34495e; border-radius: 6px; padding: 12px; margin-bottom: 15px; font-size: 0.82em; color: #bdc3c7; }
         .doc-meta span { display: block; margin-bottom: 4px; }
@@ -88,11 +89,23 @@
             }
         }
         window.addEventListener('DOMContentLoaded', function() {
-            var bar = document.getElementById('unsaved-bar');
-            if (!bar) return;
+            var hasChanges = false;
             var inputs = document.querySelectorAll('.dk-sidebar input, .dk-sidebar select, .dk-sidebar textarea');
             inputs.forEach(function(el) {
-                el.addEventListener('change', function() { bar.classList.add('visible'); });
+                el.addEventListener('change', function() { hasChanges = true; });
+            });
+            // Clear flag when analysis form is submitted
+            var analysisForm = document.querySelector('.dk-sidebar form[method="POST"]');
+            if (analysisForm) analysisForm.addEventListener('submit', function() { hasChanges = false; });
+            // Warn before navigating away with unsaved changes
+            document.querySelectorAll('a[href*="/pv/"], a[href*="/rupture/"], a[href*="/test/"]').forEach(function(link) {
+                link.addEventListener('click', function(e) {
+                    if (hasChanges) {
+                        if (!confirm('You have unsaved parameter changes. Click Update Analysis first, or continue anyway?')) {
+                            e.preventDefault();
+                        }
+                    }
+                });
             });
         });
     </script>
@@ -222,11 +235,20 @@
                     <!-- Overrides -->
                     <div class="form-group-header">Overrides</div>
                     <label><span class="tt" data-tt="Manually set the lower bound of the test window at the test site gauge in psig, overriding the calculated value — the upper bound remains lower + window size">Override Test Window Lower psig</span></label>
-                    <input type="number" name="override_gauge_lower" value="{{ '' if p.get('override_gauge_lower') is none else p.override_gauge_lower }}" placeholder="Calculated">
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="number" name="override_gauge_lower" value="{{ '' if p.get('override_gauge_lower') is none else p.override_gauge_lower }}" placeholder="Calculated" style="flex:1;">
+                        <button type="button" onclick="this.previousElementSibling.value=''" title="Clear override" style="padding:4px 8px; background:var(--color-slate-600); border:none; border-radius:3px; color:#ccc; cursor:pointer; font-size:0.8em; white-space:nowrap;">&#x2715;</button>
+                    </div>
                     <label><span class="tt" data-tt="Manually set the pre-pack air pressure target in psig, overriding the calculated value">Override Pre-pack psig</span></label>
-                    <input type="number" name="override_prepack" value="{{ '' if p.get('override_prepack') is none else p.override_prepack }}" placeholder="None">
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="number" name="override_prepack" value="{{ '' if p.get('override_prepack') is none else p.override_prepack }}" placeholder="None" style="flex:1;">
+                        <button type="button" onclick="this.previousElementSibling.value=''" title="Clear override" style="padding:4px 8px; background:var(--color-slate-600); border:none; border-radius:3px; color:#ccc; cursor:pointer; font-size:0.8em; white-space:nowrap;">&#x2715;</button>
+                    </div>
                     <label><span class="tt" data-tt="Manually set the pressure at which trapped air vents are opened during filling, overriding the calculated value">Override Vent Threshold psig</span></label>
-                    <input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None">
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="number" name="override_vent" value="{{ '' if p.get('override_vent') is none else p.override_vent }}" placeholder="None" style="flex:1;">
+                        <button type="button" onclick="this.previousElementSibling.value=''" title="Clear override" style="padding:4px 8px; background:var(--color-slate-600); border:none; border-radius:3px; color:#ccc; cursor:pointer; font-size:0.8em; white-space:nowrap;">&#x2715;</button>
+                    </div>
                 </div>
                 <button type="submit" style="width:100%; padding:10px; margin-top:15px; background:var(--color-green-600); color:white; border:none; border-radius:4px; cursor:pointer;">Update Analysis</button>
             </form>
@@ -363,7 +385,6 @@
         <a href="/logout" class="link-signout">Sign out</a>
     </div>
 
-    <div class="unsaved-indicator" id="unsaved-bar">Unsaved changes — recalculate to update results</div>
     <div class="content">
         {% if restored_version %}
         <div style="background:#e67e22; color:white; padding:14px 20px; border-radius:6px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
@@ -488,7 +509,7 @@
             })();
         </script>
 
-        <table id="data-table">
+        <div class="table-wrap"><table id="data-table">
             <thead>
                 <tr>
                     <th style="text-align:left" onclick="sortTable(0)">Station</th>
@@ -532,7 +553,7 @@
                 </tr>
                 {% endfor %}
             </tbody>
-        </table>
+        </table></div>
     </div>
 <script>
     function showTab(name, btn) {

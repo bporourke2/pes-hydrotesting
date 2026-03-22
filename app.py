@@ -292,7 +292,7 @@ def auth_callback():
     provider_id = session.pop('_oauth_provider_id', None)
     provider = get_provider(provider_id) if provider_id else get_default_provider()
     if not provider:
-        return "OAuth provider not found.", 400
+        return render_template('error.html', code=400, message="OAuth provider not found."), 400
     client = _ensure_registered(provider)
     token = client.authorize_access_token()
     userinfo = token.get('userinfo') or client.userinfo()
@@ -1387,10 +1387,10 @@ def results():
         return render_template('results.html', sec=sec, p=p, fill_time=fill_time, dew_time=dewater_time, prepack_time=prepack_time, fill_time_first=fill_time_first, fill_time_second=fill_time_second, plot1_json=json.loads(plot1), plot2_json=json.loads(plot2), vent_gallons=vent_gallons, max_smys_pct=max_smys_pct, max_smys_station=max_smys_station, portfolios=portfolios, save_id=save_id, saves=saves, current_save=current_save, save_error=save_error, restored_version=restored_version, squeeze_vol=squeeze_vol, min_bound_violations=min_bound_violations, smys_bound_violations=smys_bound_violations)
     except ValueError as ve:
         from markupsafe import escape
-        return f"Input Error: {escape(str(ve))} (Check station formats or numeric values)", 400
+        return render_template('error.html', code=400, message=f"Input Error: {escape(str(ve))} — Check station formats or numeric values."), 400
     except Exception as e:
         app.logger.exception("Calculation error")
-        return "A calculation error occurred. Check your inputs and try again.", 500
+        return render_template('error.html', code=500, message="A calculation error occurred. Check your inputs and try again."), 500
 
 @app.route('/save', methods=['POST'])
 @login_required
@@ -1508,13 +1508,13 @@ def load_save(save_id):
     validate_save_id(save_id)
     data = db_load_save(save_id)
     if data is None:
-        return "Save not found.", 404
+        return render_template('error.html', code=404, message="Save not found."), 404
     check_portfolio_access(data)
     log_action('LOAD', f'id={save_id} name="{data.get("name", "")}"')
     if 'params' not in data or 'col_map' not in data or 'file_path' not in data:
-        return "Save file is incomplete or corrupted.", 400
+        return render_template('error.html', code=400, message="Save file is incomplete or corrupted."), 400
     if not validate_file_path(data['file_path']):
-        return "Save references an invalid file path.", 400
+        return render_template('error.html', code=400, message="Save references an invalid file path."), 400
     session['params'] = data['params']
     session['col_map'] = data['col_map']
     session['file_path'] = data['file_path']
@@ -1528,15 +1528,15 @@ def load_version(save_id, version_num):
     validate_save_id(save_id)
     data = db_load_save(save_id)
     if data is None:
-        return "Save not found.", 404
+        return render_template('error.html', code=404, message="Save not found."), 404
     # Find the history entry for this version
     entry = next((h for h in data.get('history', []) if h['version'] == version_num), None)
     if not entry:
-        return "Version not found.", 404
+        return render_template('error.html', code=404, message="Version not found."), 404
     if 'col_map' not in data or 'file_path' not in data:
-        return "Save file is incomplete or corrupted.", 400
+        return render_template('error.html', code=400, message="Save file is incomplete or corrupted."), 400
     if not validate_file_path(data['file_path']):
-        return "Save references an invalid file path.", 400
+        return render_template('error.html', code=400, message="Save references an invalid file path."), 400
     check_portfolio_access(data)
     log_action('LOAD_VERSION', f'id={save_id} name="{data.get("name", "")}" v{version_num}')
     # Load historical params but keep the current save's col_map and file_path
@@ -1593,7 +1593,7 @@ def print_view():
         return render_template('print.html', sec=sec, p=p, fill_time=disp['fill_time'], dew_time=disp['dewater_time'], prepack_time=disp['prepack_time'], fill_time_first=disp['fill_time_first'], fill_time_second=disp['fill_time_second'], plot1=plot1, plot2=plot2, vent_gallons=disp['vent_gallons'], paper_size=paper_size, max_smys_pct=disp['max_smys_pct'], max_smys_station=disp['max_smys_station'], min_bound_violations=sec.min_bound_violations, smys_bound_violations=sec.smys_bound_violations, pi=session.get('project_info', {}))
     except Exception as e:
         app.logger.exception("Print view error")
-        return "Error generating print view. Check your inputs and try again.", 500
+        return render_template('error.html', code=500, message="Error generating print view. Check your inputs and try again."), 500
 
 @app.route('/pv/<save_id>')
 @login_required
@@ -1601,7 +1601,7 @@ def pv_plot(save_id):
     validate_save_id(save_id)
     data = db_load_save(save_id)
     if data is None:
-        return "Save not found.", 404
+        return render_template('error.html', code=404, message="Save not found."), 404
     check_portfolio_access(data)
     p = data.get('params', {})
     total_volume_gal = None
@@ -1691,7 +1691,7 @@ def test_execution(save_id):
     validate_save_id(save_id)
     data = db_load_save(save_id)
     if data is None:
-        return "Save not found.", 404
+        return render_template('error.html', code=404, message="Save not found."), 404
     check_portfolio_access(data)
     p = data.get('params', {})
     avg_wt = None
@@ -1898,7 +1898,7 @@ def equipment_setup(save_id):
     validate_save_id(save_id)
     data = db_load_save(save_id)
     if data is None:
-        return "Save not found.", 404
+        return render_template('error.html', code=404, message="Save not found."), 404
     check_portfolio_access(data)
 
     INSTRUMENT_TYPES = [
@@ -1985,6 +1985,20 @@ def handle_leave_results(data):
     save_id = data.get('save_id', '')
     if _SAVE_ID_RE.match(save_id):
         leave_room(f'results_{save_id}')
+
+
+# ── HTTP error handlers ──────────────────────────────────────────────────────
+@app.errorhandler(403)
+def err_403(e):
+    return render_template('error.html', code=403, message="You don't have permission to access this page."), 403
+
+@app.errorhandler(404)
+def err_404(e):
+    return render_template('error.html', code=404, message="The page you're looking for doesn't exist."), 404
+
+@app.errorhandler(500)
+def err_500(e):
+    return render_template('error.html', code=500, message="Something went wrong on our end. Please try again."), 500
 
 
 if __name__ == '__main__':

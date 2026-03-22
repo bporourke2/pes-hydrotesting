@@ -335,7 +335,7 @@ function toggleLtNav() {
                 <td style="padding:8px;">
                     <form method="POST" action="/settings/user/role" style="display:flex; gap:4px; align-items:center;">
                         <input type="hidden" name="sub" value="{{ u.sub }}">
-                        <select name="role" style="padding:4px 6px; font-size:0.85em; border:1px solid var(--lt-border); border-radius:3px;" onchange="this.form.submit()">
+                        <select name="role" style="padding:4px 6px; font-size:0.85em; border:1px solid var(--lt-border); border-radius:3px;" onchange="if(confirm('Change this user\'s role?')) this.form.submit()">
                             <option value="hydro" {% if u.role == 'hydro' %}selected{% endif %}>hydro</option>
                             <option value="hydro-admin" {% if u.role == 'hydro-admin' %}selected{% endif %}>hydro-admin</option>
                         </select>
@@ -432,6 +432,8 @@ function toggleLtNav() {
                 a.classList.toggle('active', a.getAttribute('href') === '#' + (current && current.id));
             });
         }, {passive: true});
+        // Highlight correct section on initial load
+        window.dispatchEvent(new Event('scroll'));
         // Scroll to anchor if present
         var anchor = window.location.hash.replace('#', '');
         if (anchor) {

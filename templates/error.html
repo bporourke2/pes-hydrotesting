@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Error {{ code }} — Hydrotest Tool</title>
+    <link rel="stylesheet" href="/static/shared.css">
+    <style>
+        .error-card { max-width: 480px; text-align: center; }
+        .error-code { font-size: 4em; font-weight: 700; color: var(--color-slate-200); margin-bottom: 8px; }
+        .error-msg  { font-size: 1em; color: var(--lt-text-muted); margin-bottom: 28px; }
+    </style>
+</head>
+<body class="page-light">
+<a href="/"><img src="/static/peslogo.png" alt="PES Logo" class="page-logo" style="max-width:160px;"></a>
+<div class="lt-card error-card">
+    <div class="error-code">{{ code }}</div>
+    <p class="error-msg">{{ message }}</p>
+    <a href="/" class="btn btn--green">&#8592; Go Home</a>
+</div>
+</body>
+</html>
